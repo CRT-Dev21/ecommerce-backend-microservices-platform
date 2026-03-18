@@ -1,0 +1,39 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: payment-service
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5436/payments_db}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8080/oauth2/jwks}
+      client:
+        registration:
+          seller-client:
+            client-id: payment-service
+            client-secret: ${PAYMENT_SERVICE_CLIENT_SECRET:payment-service-secret}
+            authorization-grant-type: client_credentials
+            scope: seller:bankInfo
+        provider:
+          seller-client:
+            token-uri: ${AUTH_SERVICE_TOKEN_URI:http://localhost:8080/oauth2/token}
+
+services:
+  seller:
+    url: ${SELLER_SERVICE_URL:http://localhost:8082}

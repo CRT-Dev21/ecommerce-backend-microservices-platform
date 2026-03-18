@@ -1,0 +1,77 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: order-service
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/orders_db}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgreuser}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8080/oauth2/jwks}
+      client:
+        registration:
+          inventory-client:
+            client-id: order-service
+            client-secret: ${ORDER_SERVICE_CLIENT_SECRET:order-service-secret}
+            authorization-grant-type: client_credentials
+            scope: inventory:reserve
+        provider:
+          inventory-client:
+            token-uri: ${AUTH_SERVICE_TOKEN_URI:http://localhost:8080/oauth2/token}
+
+services:
+  inventory:
+    url: ${INVENTORY_SERVICE_URL:http://localhost:8085}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      inventory:
+        failure-rate-threshold: 50
+        slow-call-duration-threshold: 3s
+        slow-call-rate-threshold: 80
+        minimum-number-of-calls: 10
+        sliding-window-size: 10
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        ignore-exceptions:
+          - com.ecommerce.crtdev.order_service.exception.exceptions.InsufficientStockException
+          - com.ecommerce.crtdev.order_service.exception.exceptions.InventoryProductNotFoundException
+          - com.ecommerce.crtdev.order_service.exception.exceptions.InventoryConflictException
+  retry:
+    instances:
+      inventory:
+        max-attempts: 2
+        wait-duration: 300ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - com.ecommerce.crtdev.order_service.exception.exceptions.InventoryUnavailableException
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+        ignore-exceptions:
+          - com.ecommerce.crtdev.order_service.exception.exceptions.InsufficientStockException
+          - com.ecommerce.crtdev.order_service.exception.exceptions.InventoryProductNotFoundException
+          - com.ecommerce.crtdev.order_service.exception.exceptions.InventoryConflictException

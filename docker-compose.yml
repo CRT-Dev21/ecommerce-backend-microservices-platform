@@ -1,0 +1,306 @@
+services:
+
+  identity-db:
+    image: postgres:16
+    container_name: identity-db
+    environment:
+      POSTGRES_DB: identity_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgreuser
+    ports:
+      - "5432:5432"
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: auth-service/Dockerfile
+    container_name: auth-service
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      identity-db:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://identity-db:5432/identity_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgreuser
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  catalog-db:
+    image: mongo:7.0
+    container_name: catalog-db
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: mongouser
+      MONGO_INITDB_DATABASE: products_db
+    volumes:
+      - ./init/mongo-init.js:/docker-entrypoint-initdb.d/init.js:ro
+
+  catalog-redis:
+    image: redis:7
+    container_name: catalog-redis
+    ports:
+      - "6379:6379"
+
+  catalog-service:
+    build:
+      context: .
+      dockerfile: catalog-service/Dockerfile
+    container_name: catalog-service
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      catalog-db:
+        condition: service_started
+      catalog-redis:
+        condition: service_started
+      auth-service:
+        condition: service_started
+    ports:
+      - "8081:8081"
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: '1.0'
+    environment:
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+      SPRING_DATA_MONGODB_URI: mongodb://mongo:mongouser@catalog-db:27017/catalog-db?authSource=admin
+      REDIS_HOST: catalog-redis
+      REDIS_PORT: 6379
+      SPRING_DATA_REDIS_URI: catalog-redis://catalog-redis:6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+
+  sellers-db:
+    image: postgres:16
+    container_name: sellers-db
+    environment:
+      POSTGRES_DB: sellers_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgreuser
+    ports:
+      - "5433:5432"
+
+  seller-service:
+    build:
+      context: .
+      dockerfile: seller-service/Dockerfile
+    container_name: seller-service
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      sellers-db:
+        condition: service_started
+      auth-service:
+        condition: service_started
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://sellers-db:5432/sellers_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgreuser
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+
+  cart-redis:
+    image: redis:7
+    container_name: cart
+    ports:
+      - "6380:6379"
+
+  cart-service:
+    build:
+      context: .
+      dockerfile: cart-service/Dockerfile
+    container_name: cart-service
+    depends_on:
+      cart-redis:
+        condition: service_started
+      auth-service:
+        condition: service_started
+    ports:
+      - "8086:8086"
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: '1.0'
+    environment:
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+      REDIS_HOST: cart-redis
+      REDIS_PORT: 6379
+      SPRING_DATA_REDIS_URI: cart-redis://cart-redis:6379
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+
+  inventory-db:
+    image: postgres:16
+    container_name: inventory-db
+    environment:
+      POSTGRES_DB: inventory_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgreuser
+    ports:
+      - "5434:5432"
+
+  inventory-service:
+    build:
+      context: .
+      dockerfile: inventory-service/Dockerfile
+    container_name: inventory-service
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      inventory-db:
+        condition: service_started
+      auth-service:
+        condition: service_started
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://inventory-db:5432/inventory_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgreuser
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+
+  order-db:
+    image: postgres:16
+    container_name: order-db
+    environment:
+      POSTGRES_DB: order_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgreuser
+    ports:
+      - "5435:5432"
+
+  order-service:
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
+    container_name: order-service
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      order-db:
+        condition: service_started
+      auth-service:
+        condition: service_started
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://order-db:5432/order_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgreuser
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+      ORDER_SERVICE_CLIENT_SECRET: order-service-secret
+      AUTH_SERVICE_TOKEN_URI: http://auth-service:8080/oauth2/token
+      INVENTORY_SERVICE_URL: http://inventory-service:8085
+
+  payment-db:
+    image: postgres:16
+    container_name: payment-db
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgreuser
+    ports:
+      - "5436:5432"
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
+    container_name: payment-service
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      payment-db:
+        condition: service_started
+      auth-service:
+        condition: service_started
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://payment-db:5432/payment_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgreuser
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+      PAYMENT_SERVICE_CLIENT_SECRET: payment-service-secret
+      AUTH_SERVICE_TOKEN_URI: http://auth-service:8080/oauth2/token
+      SELLER_SERVICE_URL: http://seller-service:8082
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    container_name: notification-service
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      GMAIL_USERNAME: cesarromtor@gmail.com
+      GMAIL_APP_PASSWORD: zcpd zlga kdqt bptd
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: [ "CMD", "bash", "-c", "nc -z localhost 9092" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: [ "/bin/bash", "-c" ]
+    command: >
+      "
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic orders.events;
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic payments.events;
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic inventory.events;
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic catalog.events;
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic sellers.events;
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic orders.events.payment-group.dlq;
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic orders.events.inventory-group.dlq;
+      "
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
