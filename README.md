@@ -87,9 +87,6 @@ Internal service calls are authenticated using OAuth2 Client Credentials flow. *
 
 Each microservice validates tokens independently, security is not centralized in the Gateway. This follows the Defense in Depth principle: if the Gateway is compromised or bypassed, every service still enforces its own authorization rules.
 
-### Multi-Seller Order Splitting
-A single checkout request containing products from multiple sellers is automatically split into independent orders, one per seller, each with its own lifecycle, payment, and Saga. This is how MercadoLibre work. If seller A's stock fails, seller B's order still proceeds. The `checkoutId` groups all resulting orders for the user's view.
-
 ### Card Tokenization
 Card data never enters the backend system. The frontend tokenizes the card number with the Payment Service before the checkout flow begins. What flows through Order Service and the Saga is an opaque token string. No PCI scope. No card numbers in any database, log, or event.
 
@@ -99,6 +96,11 @@ Every Kafka consumer in this system is deliberately tolerant of schema evolution
 This means a producer can evolve its event schema forward (adding optional fields) without any consumer needing to be updated or redeployed simultaneously. The only contract that matters is: don't remove fields that consumers depend on, and don't change their meaning. Everything else is free to change independently.
 
 This is the pattern that makes truly independent deployments possible in an event-driven system. Without it, every schema change becomes a coordinated multi-service deployment, which defeats the purpose of having independent services in the first place
+
+### Multi-Seller Order Splitting
+A single checkout request containing products from multiple sellers is automatically split into independent orders, one per seller, each with its own lifecycle, payment, and Saga. This is how MercadoLibre work. If seller A's stock fails, seller B's order still proceeds. The `checkoutId` groups all resulting orders for the user's view.
+
+![Saga Diagram](docs/order-splitting.png)
 
 ---
 
@@ -180,14 +182,14 @@ docker-compose up --build
 | Service | Port |
 |---|---|
 | API Gateway | 8080 |
-| Auth Service | 8083 |
-| Catalog Service | 8081 |
-| Inventory Service | 8087 |
-| Order Service | 8084 |
-| Payment Service | 8089 |
-| Cart Service | 8086 |
-| Seller Service | 8082 |
-| Notification Service | 8091 |
+| Auth Service | 8081 |
+| Catalog Service | 8082 |
+| Seller Service | 8083 |
+| Payment Service | 8084 |
+| Order Service | 8085 |
+| Inventory Service | 8086 |
+| Cart Service | 8087 |
+| Notification Service | 8088 |
 | Kafka UI | 8090 |
 
 ### 5. Authenticate

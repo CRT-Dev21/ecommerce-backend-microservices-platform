@@ -10,6 +10,7 @@
         <module name="cart-service" />
         <module name="payment-service" />
         <module name="inventory-service" />
+        <module name="payment_service" />
         <module name="catalog-service" />
         <module name="seller-service" />
         <module name="order-service" />
@@ -31,6 +32,7 @@
       <module name="notification-service" options="-parameters" />
       <module name="order-service" options="-parameters" />
       <module name="payment-service" options="-parameters" />
+      <module name="payment_service" options="-parameters" />
       <module name="product-service" options="-parameters" />
       <module name="seller-service" options="-parameters" />
       <module name="user-service" options="-parameters" />

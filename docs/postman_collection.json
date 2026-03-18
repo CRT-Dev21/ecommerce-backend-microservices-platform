@@ -1,0 +1,594 @@
+{
+  "info": {
+    "name": "eCommerce Backend Microservices",
+    "description": "Complete API collection for the eCommerce Backend Microservices Platform.\n\n## Setup\n1. Set `baseUrl` variable to your gateway URL (default: http://localhost:8080)\n2. Run the **Auth** → Get Token request first\n3. The token is automatically saved to the `accessToken` variable\n\n## Full Checkout Flow\n1. Auth → Get Token\n2. Payment → Tokenize Card\n3. Seller → Register Seller\n4. Catalog → Create Product\n5. Cart → Add Item\n6. Order → Checkout\n7. Check your email",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",        "value": "http://localhost:8080",  "type": "string" },
+    { "key": "authUrl",        "value": "http://localhost:8081",  "type": "string" },
+    { "key": "accessToken",    "value": "",                       "type": "string" },
+    { "key": "productId",      "value": "",                       "type": "string" },
+    { "key": "orderId",        "value": "",                       "type": "string" },
+    { "key": "paymentToken",   "value": "",                       "type": "string" },
+    { "key": "sellerId",       "value": "",                       "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Get Token (Authorization Code via Postman)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" },
+              { "key": "Authorization", "value": "Basic cG9zdG1hbi1jbGllbnQ6c2VjcmV0" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type",   "value": "authorization_code" },
+                { "key": "code",         "value": "{{authCode}}" },
+                { "key": "redirect_uri", "value": "https://oauth.pstmn.io/v1/callback" }
+              ]
+            },
+            "url": {
+              "raw": "{{authUrl}}/oauth2/token",
+              "host": ["{{authUrl}}"],
+              "path": ["oauth2", "token"]
+            },
+            "description": "Exchange authorization code for access token.\n\nTo get the code:\n1. Open browser: http://localhost:8083/oauth2/authorize?response_type=code&client_id=postman-client&redirect_uri=https://oauth.pstmn.io/v1/callback&scope=openid profile\n2. Login with your credentials\n3. Copy the `code` from the redirect URL\n4. Paste it in the `authCode` variable"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "    pm.collectionVariables.set('accessToken', json.access_token);",
+                  "    console.log('Token saved successfully');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get JWKS (Public Keys)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{authUrl}}/oauth2/jwks",
+              "host": ["{{authUrl}}"],
+              "path": ["oauth2", "jwks"]
+            },
+            "description": "Returns the public keys used to verify JWTs. Each microservice calls this on startup."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Catalog",
+      "item": [
+        {
+          "name": "Create Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "data",
+                  "value": "{\"name\":\"Wireless Headphones\",\"description\":\"Premium noise-cancelling headphones\",\"price\":299.99,\"categoryId\":\"electronics\",\"stock\":50}",
+                  "type": "text",
+                  "contentType": "application/json"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": [],
+                  "description": "Product image file"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products"]
+            },
+            "description": "Creates a product. Requires ROLE_SELLER. Publishes ProductCreated event to Kafka, which Inventory and Order services consume to update their local snapshots."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.productId) {",
+                  "    pm.collectionVariables.set('productId', json.productId);",
+                  "    console.log('Product ID saved:', json.productId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Product",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "{{productId}}"]
+            }
+          }
+        },
+        {
+          "name": "Homepage Products",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/products/homepage?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "homepage"],
+              "query": [{ "key": "limit", "value": "20" }]
+            },
+            "description": "Returns latest products. Served from Redis cache. p(95) = 8ms under 200 concurrent users."
+          }
+        },
+        {
+          "name": "Search Products",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/products/search?searchTerm=headphones&page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "search"],
+              "query": [
+                { "key": "searchTerm", "value": "headphones" },
+                { "key": "categoryId", "value": "electronics", "disabled": true },
+                { "key": "minPrice",   "value": "100",          "disabled": true },
+                { "key": "maxPrice",   "value": "500",          "disabled": true },
+                { "key": "page",       "value": "0" },
+                { "key": "size",       "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Product",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "data",
+                  "value": "{\"name\":\"Wireless Headphones Pro\",\"price\":349.99}",
+                  "type": "text",
+                  "contentType": "application/json"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "{{productId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", "{{productId}}"]
+            },
+            "description": "Deletes product. Publishes ProductDeleted event — Inventory deactivates stock record, Order deactivates price snapshot."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Inventory",
+      "item": [
+        {
+          "name": "Get Stock",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/inventory/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "inventory", "{{productId}}"]
+            },
+            "description": "Returns availableStock and reservedStock for a product."
+          }
+        },
+        {
+          "name": "Update Stock (Seller)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delta\": 25\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/inventory/{{productId}}/stock",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "inventory", "{{productId}}", "stock"]
+            },
+            "description": "Seller adjusts stock. delta = positive to add, negative to reduce. Requires ROLE_SELLER and ownership of the product."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Cart",
+      "item": [
+        {
+          "name": "Get Cart",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cart",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cart"]
+            },
+            "description": "Returns cart for the authenticated user. Stored in Redis with 14-day TTL."
+          }
+        },
+        {
+          "name": "Add Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"name\": \"Wireless Headphones\",\n  \"price\": 299.99,\n  \"imageUrl\": \"http://localhost:8081/images/headphones.jpg\",\n  \"quantity\": 1\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/cart/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cart", "items"]
+            },
+            "description": "Adds item to cart. If product already in cart, quantities are merged (capped at 99). No stock validation at this point — stock is validated at checkout."
+          }
+        },
+        {
+          "name": "Update Item Quantity",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 3\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/cart/items/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cart", "items", "{{productId}}"]
+            }
+          }
+        },
+        {
+          "name": "Remove Item",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cart/items/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cart", "items", "{{productId}}"]
+            }
+          }
+        },
+        {
+          "name": "Clear Cart",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cart",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cart"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Payment",
+      "item": [
+        {
+          "name": "Tokenize Card",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cardNumber\": \"4111111111111111\",\n  \"holderName\": \"Cesar Romero\",\n  \"expiryMonth\": 12,\n  \"expiryYear\": 2027,\n  \"cvv\": \"123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/tokenize",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payments", "tokenize"]
+            },
+            "description": "Tokenizes card data. The card number and CVV are discarded immediately after tokenization — never persisted. Returns an opaque token used for checkout.\n\nTest card numbers:\n- 4111111111111111 → VISA\n- 5500005555555559 → MASTERCARD\n- 378282246310005  → AMEX"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.token) {",
+                  "    pm.collectionVariables.set('paymentToken', json.token);",
+                  "    console.log('Payment token saved:', json.token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "Seller",
+      "item": [
+        {
+          "name": "Register as Seller",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"businessName\": \"Tech Store MX\",\n  \"email\": \"seller@techstore.mx\",\n  \"phone\": \"+52 33 1234 5678\",\n  \"bankAccount\": {\n    \"accountHolderName\": \"Cesar Romero\",\n    \"bankName\": \"BBVA\",\n    \"country\": \"MX\",\n    \"accountNumber\": \"012345678901234567\",\n    \"routingCode\": null\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/sellers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sellers"]
+            },
+            "description": "Registers authenticated user as a seller. Publishes SellerCreated event — Auth Service consumes it to assign ROLE_SELLER. The user will have ROLE_SELLER on their next login."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) {",
+                  "    pm.collectionVariables.set('sellerId', json.id);",
+                  "    console.log('Seller ID saved:', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sellers/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sellers", "me"]
+            },
+            "description": "Returns seller profile. Bank account number is masked (last 4 digits only) in the public response."
+          }
+        },
+        {
+          "name": "Update Bank Account",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountHolderName\": \"Cesar Romero Tornez\",\n  \"bankName\": \"Santander\",\n  \"country\": \"MX\",\n  \"accountNumber\": \"014180655403658729\",\n  \"routingCode\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/sellers/me/bank-account",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sellers", "me", "bank-account"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Order",
+      "item": [
+        {
+          "name": "Checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1,\n      \"price\": 299.99\n    }\n  ],\n  \"paymentMethodToken\": \"{{paymentToken}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/checkout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "checkout"]
+            },
+            "description": "Initiates checkout. The service:\n1. Validates prices against local product snapshot\n2. Groups items by seller\n3. For each seller: reserves stock (sync HTTP to Inventory), creates order, publishes OrderReadyForPaymentEvent\n\nReturns 201 if all orders created, 207 Multi-Status if some failed, 422 if all failed.\n\nThe Saga then continues asynchronously via Kafka."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.ordersCreated && json.ordersCreated.length > 0) {",
+                  "    pm.collectionVariables.set('orderId', json.ordersCreated[0].id);",
+                  "    console.log('Order ID saved:', json.ordersCreated[0].id);",
+                  "    console.log('Orders created:', json.ordersCreated.length);",
+                  "    console.log('Orders failed:', json.ordersFailed.length);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get My Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Get Order",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "{{orderId}}"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "{{orderId}}"]
+            },
+            "description": "Cancels order if status is PENDING, AWAITING_PAYMENT, or PAYMENT_PROCESSING. Triggers compensation Saga: ReverseStockEvent published → Inventory reverts stock → OrderCancelledEvent → Notification sends email."
+          }
+        },
+        {
+          "name": "Request Refund",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/refund",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "{{orderId}}", "refund"]
+            },
+            "description": "Requests refund for a CONFIRMED order. Triggers compensation Saga: PaymentRefundRequestEvent → Payment processes refund → PaymentRefundedEvent → Order reverts stock → buyer notified."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "BFF",
+      "item": [
+        {
+          "name": "Product Detail (Catalog + Inventory + Seller)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bff/products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "bff", "products", "{{productId}}"]
+            },
+            "description": "Composes product info from three services in parallel:\n- Catalog Service: name, description, price, images\n- Inventory Service: available stock\n- Seller Service: seller business name\n\nSingle request from frontend instead of three."
+          }
+        },
+        {
+          "name": "Homepage Feed (Catalog + Inventory)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/bff/homepage?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "bff", "homepage"],
+              "query": [{ "key": "limit", "value": "20" }]
+            },
+            "description": "Returns homepage products enriched with stock availability. Calls Catalog for the product list, then enriches each product with stock status from Inventory."
+          }
+        }
+      ]
+    }
+
+  ]
+}

@@ -21,7 +21,7 @@ services:
       identity-db:
         condition: service_started
     ports:
-      - "8080:8080"
+      - "8081:8081"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://identity-db:5432/identity_db
       SPRING_DATASOURCE_USERNAME: postgres
@@ -61,7 +61,7 @@ services:
       auth-service:
         condition: service_started
     ports:
-      - "8081:8081"
+      - "8082:8082"
     deploy:
       resources:
         limits:
@@ -99,7 +99,7 @@ services:
       auth-service:
         condition: service_started
     ports:
-      - "8082:8082"
+      - "8083:8083"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://sellers-db:5432/sellers_db
       SPRING_DATASOURCE_USERNAME: postgres
@@ -124,7 +124,7 @@ services:
       auth-service:
         condition: service_started
     ports:
-      - "8086:8086"
+      - "8087:8087"
     deploy:
       resources:
         limits:
@@ -160,7 +160,7 @@ services:
       auth-service:
         condition: service_started
     ports:
-      - "8085:8085"
+      - "8086:8086"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://inventory-db:5432/inventory_db
       SPRING_DATASOURCE_USERNAME: postgres
@@ -191,7 +191,7 @@ services:
       auth-service:
         condition: service_started
     ports:
-      - "8084:8084"
+      - "8085:8085"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://order-db:5432/order_db
       SPRING_DATASOURCE_USERNAME: postgres
@@ -225,7 +225,7 @@ services:
       auth-service:
         condition: service_started
     ports:
-      - "8083:8083"
+      - "8084:8084"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://payment-db:5432/payment_db
       SPRING_DATASOURCE_USERNAME: postgres
@@ -244,9 +244,11 @@ services:
     depends_on:
       kafka-init:
         condition: service_completed_successfully
+    ports:
+      - "8088:8088"
     environment:
-      GMAIL_USERNAME: cesarromtor@gmail.com
-      GMAIL_APP_PASSWORD: zcpd zlga kdqt bptd
+      GMAIL_USERNAME:
+      GMAIL_APP_PASSWORD:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
   zookeeper:
