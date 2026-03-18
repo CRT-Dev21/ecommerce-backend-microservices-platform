@@ -60,8 +60,14 @@ This makes the entire distributed transaction traceable across services without 
 ### Read Model / Local Cache Pattern
 **Order Service** maintains its own `product_catalog_snapshot` table, fed by Catalog events (`ProductCreated`, `ProductDeleted`, `ProductPriceChanged`). When a user checks out, prices are validated locally, no synchronous call to Catalog at the most critical moment in the system. This is eventual consistency as a deliberate trade-off: a slightly stale price snapshot is far less dangerous than a synchronous dependency that can fail mid-checkout.
 
-### Strangler Fig (Bounded Contexts via DDD)
-The user entity is intentionally split: **Auth Service** knows who you are (identity), **Seller Service** knows what kind of seller you are (business profile). These are different bounded contexts that happen to share a `userId` as a foreign key. Merging them would create the "God Service" anti-pattern.
+### Bounded Contexts via DDD
+Domain-Driven Design guided the service boundaries in this system. The key insight is that the same real-world concept can belong to different bounded contexts, and forcing them into a single service creates the God Service anti-pattern.
+
+**User identity vs. seller profile** — Auth Service knows who you are (authentication, roles, tokens). Seller Service knows what kind of business you run (profile, bank account, product catalog ownership). These share a userId as a foreign key but have completely different lifecycles, schemas, and responsibilities. Merging them would mean Auth Service needs to know about bank accounts, and Seller Service needs to know about JWTs.
+
+**Product information vs. product stock** — Catalog Service owns the product as a browsing entity: name, description, price, images, category. Inventory Service owns the same product as an operational entity: available stock, reserved stock, version for optimistic locking. The name of a product changes rarely. The stock changes on every order, reservation, and cancellation. Coupling them would mean every stock write contends with catalog reads on the same entity.
+
+This separation also made independent technical decisions possible: Catalog is reactive with Redis (optimized for high-concurrency reads). Inventory is imperative with PostgreSQL and optimistic locking (optimized for consistent concurrent writes). A single merged service could not have made both decisions.
 
 ### Circuit Breaker + Retry (Resilience4j)
 Applied to the **Order → Inventory** synchronous call. The call is the only synchronous dependency in the entire checkout flow, it exists because stock reservation must be synchronous (you cannot tell 1,000 users their order was accepted and then fail 900 of them asynchronously). 
