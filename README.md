@@ -10,9 +10,12 @@ A fully distributed eCommerce backend built from scratch with production-grade p
 
 The system is organized into four layers:
 
-- **Edge Layer** — API Gateway handles routing, rate limiting, CORS, and security headers. BFF (Backend for Frontend) composes data from multiple services for complex UI screens.
+- **Edge Layer** — API Gateway handles routing, rate limiting, CORS, and security headers. For screens that require data from multiple services (such as a product detail page combining catalog, inventory, and seller info), the Gateway performs parallel request aggregation internally, keeping the frontend interface simple without adding an extra service to the infrastructure.
+
 - **Services Layer** — Eight independent microservices, each owning its domain completely. No shared databases. No shared libraries.
-- **Middleware Layer** — Apache Kafka decouples asynchronous communication. Every event carries a `correlationId` and `causationId` for distributed tracing.
+
+- **Middleware Layer** — Apache Kafka decouples asynchronous communication.
+
 - **Data Layer** — Each service owns its persistence technology. MongoDB for the product catalog (flexible document model), PostgreSQL for transactional services (ACID guarantees), Redis for session-like data (cart, rate limiting).
 
 ---
@@ -30,7 +33,6 @@ The system is organized into four layers:
 | **Seller Service** | Seller profiles, bank account management | Spring MVC, PostgreSQL, Kafka |
 | **Notification Service** | Real email delivery on order events | Spring Boot, JavaMail (Gmail SMTP), Kafka |
 | **API Gateway** | Routing, rate limiting, security headers, CORS | Spring Cloud Gateway, Redis |
-| **BFF Service** | Data composition for product detail and homepage | Spring WebFlux, Resilience4j |
 
 ---
 
@@ -180,18 +182,11 @@ docker-compose up --build
 | Cart Service | 8086 |
 | Seller Service | 8082 |
 | Notification Service | 8091 |
-| BFF Service | 8092 |
 | Kafka UI | 8090 |
 
 ### 5. Authenticate
-```bash
-# Get a token
-curl -X POST http://localhost:8083/oauth2/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=authorization_code&..."
-```
 
-Import the Postman collection from `docs/postman_collection.json` for the complete request flow.
+Import the Postman collection from `docs/postman_collection.json` for the complete request flow including OAuth2 authorization.
 
 ---
 
