@@ -25,7 +25,7 @@ The system is organized into four layers:
 | Service | Responsibility | Stack |
 |---|---|---|
 | **Auth Service** | OAuth2 Authorization Server — issues JWTs, manages registered clients | Spring Authorization Server, PostgreSQL |
-| **Catalog Service** | Product management, search, homepage feed | Spring WebFlux, MongoDB, Reactive Redis, Kafka |
+| **Catalog Service** | Product management, search, homepage feed | Spring Boot 4, Java 21, Redis, MongoDB, Kafka |
 | **Inventory Service** | Stock reservation, compensation, seller stock management | Spring MVC, PostgreSQL, Kafka |
 | **Order Service** | Saga orchestrator — checkout, multi-seller order splitting | Spring MVC, PostgreSQL, Kafka, WebClient |
 | **Payment Service** | Card tokenization, payment simulation, refunds | Spring MVC, PostgreSQL, Kafka, WebClient |
@@ -67,7 +67,7 @@ Domain-Driven Design guided the service boundaries in this system. The key insig
 
 **Product information vs. product stock** — Catalog Service owns the product as a browsing entity: name, description, price, images, category. Inventory Service owns the same product as an operational entity: available stock, reserved stock, version for optimistic locking. The name of a product changes rarely. The stock changes on every order, reservation, and cancellation. Coupling them would mean every stock write contends with catalog reads on the same entity.
 
-This separation also made independent technical decisions possible: Catalog is reactive with Redis (optimized for high-concurrency reads). Inventory is imperative with PostgreSQL and optimistic locking (optimized for consistent concurrent writes). A single merged service could not have made both decisions.
+This separation also made independent technical decisions possible: Catalog uses virtual threads with Redis (optimized for high-concurrency reads). Inventory is imperative with PostgreSQL and optimistic locking (optimized for consistent concurrent writes). A single merged service could not have made both decisions.
 
 ### Circuit Breaker + Retry (Resilience4j)
 Applied to the **Order → Inventory** synchronous call. The call is the only synchronous dependency in the entire checkout flow, it exists because stock reservation must be synchronous (you cannot tell 1,000 users their order was accepted and then fail 900 of them asynchronously). 
@@ -112,12 +112,20 @@ A single checkout request containing products from multiple sellers is automatic
 
 ## Load Test Results — Catalog Service
 
+The Catalog Service was benchmarked twice under identical conditions to evaluate the impact of switching from a reactive stack (WebFlux + Reactor) to an imperative stack with virtual threads (Spring Boot 4 + Java 21). Same hexagonal architecture, same endpoints, same traffic distribution:
+
+- 70% homepage reads (Redis cache)
+- 20% product creation (multipart upload -> MongoDB -> Kafka)
+- 10% search with filters (MongoDB)
+
+
+
 The reactive stack was validated under real load. The test used a realistic traffic distribution:
 - 70% homepage reads (Redis cache)
 - 20% product creation (multipart upload → Kafka)
 - 10% search with filters (MongoDB)
 
-### Normal load — 200 VUs, 5 minutes
+### Normal load — 200 VUs, 5 minutes (reactive baseline)
 
 | Metric | Value |
 |---|---|
@@ -130,23 +138,36 @@ The reactive stack was validated under real load. The test used a realistic traf
 | Products created | 7,647 — zero write failures |
 
 ### Breaking point — 800 VUs, 10 minutes
+Two identical services, two different threading models:
 
-| Metric | Value |
-|---|---|
-| Total requests | 303,420 |
-| Throughput | 505 req/s |
-| Error rate | 0.000% |
-| p(95) latency | 1,354ms |
-| Products created | 60,782 — zero write failures |
+| Metric | Reactive (WebFlux) | Imperative (Virtual Threads) | Delta |
+|---|---|---|---|
+| Total requests | 303,420 | 756,609 | **+149%** |
+| Throughput | 505 req/s | 1,261 req/s | **+2.5x** |
+| Avg latency | 581ms | 136ms | **-76%** |
+| p(95) latency | 1,345ms | 454ms | **-66%** |
+| Max latency | 2,363ms | 2,974ms | higher spikes |
+| Error rate | 0.000% | 0.000% | equal |
+| Products created | 60,782 | 151,515 | **+149%** |
+
 
 **What the breaking point revealed:** At 800 VUs, the catalog-service CPU hit 106% of its single allocated core. Redis was at 0.26%. MongoDB at 12.82%. Kafka stable. The bottleneck was exclusively the CPU, the Netty event loop was saturated processing concurrent multipart uploads, which delayed even cached responses.
 
 The service never crashed. It degraded gracefully and accepted every request.
 
-![K6 results](docs/k6-results.png)
-![Docker stats](docs/docker-stats.png)
+**Why virtual threads won:** The reactive version wasn't slow because WebFlux is bad. It was slow because the overhead of the reactive model stopped paying for itself. Every request passed through Reactor's operator chain — flatMap, context propagation, scheduler switching — machinery that exists to maximize throughput when I/O latency is high and unpredictable. When your dependencies respond in single-digit milliseconds, you pay the cost of a non-blocking pipeline without getting the benefit.
+ 
+Virtual threads flip the economics. When a virtual thread blocks waiting for Redis, MongoDB, or a Kafka ack like in this case, the underlying OS thread is immediately freed and picks up another request. No operator chains. No scheduler overhead. No backpressure management. The JVM handles the concurrency, and the code stays readable.
+ 
+**When does WebFlux still make sense?** Streaming, SSE, or workloads with genuinely unpredictable external latency like third-party payment gateways, slow upstream APIs, real-time event pipelines where backpressure is a real concern. For a service where latency is bounded and infrastructure is controlled, virtual threads win. And your team doesn't need to learn Reactor to get there.
 
-**The conclusion:** The fix is not a code change. A second instance behind a load balancer would nearly double throughput because every other component has headroom. That's the point of building with a reactive stack and hexagonal architecture, when you hit the wall, the answer is infrastructure, not refactoring.
+### Reactive Catalog Service test results
+![K6 results](docs/k6-reactive-results.png)
+
+### Catalog Service + Virtual Threads test results
+![K6 results](docs/k6-imperative-results.png)
+
+![Docker stats](docs/docker-stats.png)
 
 ---
 
@@ -154,7 +175,7 @@ The service never crashed. It degraded gracefully and accepted every request.
 
 ### Prerequisites
 - Docker Desktop
-- Java 17
+- Java 21
 - Maven
 
 ### 1. Clone the repository
@@ -170,7 +191,7 @@ GMAIL_USERNAME=your-email@gmail.com
 GMAIL_APP_PASSWORD=your-16-char-app-password
 ```
 
-Gmail App Password: Google Account → Security → 2-Step Verification → App Passwords.
+Gmail App Password: Google Account -> Security -> 2-Step Verification -> App Passwords.
 
 ### 3. Start all services
 ```bash
@@ -201,22 +222,22 @@ Import the Postman collection from `docs/postman_collection.json` for the comple
 ## Full Checkout Flow
 
 ```
-1. POST /api/payments/tokenize          → get paymentMethodToken
-2. POST /api/sellers                    → register as seller (if needed)
-3. POST /api/products                   → create products with images
-4. POST /api/cart/items                 → add items to cart
-5. POST /api/orders/checkout            → checkout (splits by seller, starts Sagas)
-6. Check email                          → confirmation or failure notification
-7. POST /api/orders/{orderId}/refund    → request refund (triggers compensation Saga)
+1. POST /api/payments/tokenize          -> get paymentMethodToken
+2. POST /api/sellers                    -> register as seller (if needed)
+3. POST /api/products                   -> create products with images
+4. POST /api/cart/items                 -> add items to cart
+5. POST /api/orders/checkout            -> checkout (splits by seller, starts Sagas)
+6. Check email                          -> confirmation or failure notification
+7. POST /api/orders/{orderId}/refund    -> request refund (triggers compensation Saga)
 ```
 
 ---
 
 ## Tech Stack Summary
 
-**Languages & Runtimes:** Java 17
+**Languages & Runtimes:** Java 21
 
-**Frameworks:** Spring Boot 3.5, Spring WebFlux, Spring Security, Spring Data JPA, Spring Data MongoDB Reactive, Spring Data Redis Reactive, Spring Cloud Gateway, Spring Authorization Server
+**Frameworks:** Spring Boot 4 (Catalog), Spring Boot 3.5 (remaining services), Spring MVC, Spring WebFlux, Spring Security, Spring Data JPA, Spring Data MongoDB Reactive, Spring Data Redis Reactive, Spring Cloud Gateway, Spring Authorization Server
 
 **Messaging:** Apache Kafka
 
@@ -224,7 +245,7 @@ Import the Postman collection from `docs/postman_collection.json` for the comple
 
 **Resilience:** Resilience4j (Circuit Breaker, Retry)
 
-**Security:** OAuth2 Authorization Code Flow (user authentication), OAuth2 Client Credentials Flow (service-to-service), JWT (RS256)
+**Security:** OAuth2 Authorization Code Flow (user authentication), OAuth2 Client Credentials Flow (service-to-service), JWT
 
 **Load Testing:** k6
 
