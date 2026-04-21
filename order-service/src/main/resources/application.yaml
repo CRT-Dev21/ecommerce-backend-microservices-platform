@@ -1,5 +1,5 @@
 server:
-  port: 8084
+  port: 8085
 
 spring:
   application:
@@ -51,7 +51,7 @@ resilience4j:
     instances:
       inventory:
         failure-rate-threshold: 50
-        slow-call-duration-threshold: 3s
+        slow-call-duration-threshold: 1s
         slow-call-rate-threshold: 80
         minimum-number-of-calls: 10
         sliding-window-size: 10

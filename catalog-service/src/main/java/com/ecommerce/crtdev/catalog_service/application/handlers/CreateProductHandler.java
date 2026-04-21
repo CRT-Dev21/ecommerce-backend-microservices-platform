@@ -1,6 +1,7 @@
 package com.ecommerce.crtdev.catalog_service.application.handlers;
 
 import com.ecommerce.crtdev.catalog_service.application.commands.CreateProductCommand;
+import com.ecommerce.crtdev.catalog_service.application.queries.ProductResponse;
 import com.ecommerce.crtdev.catalog_service.domain.events.CloudEvent;
 import com.ecommerce.crtdev.catalog_service.domain.events.EventMetadata;
 import com.ecommerce.crtdev.catalog_service.domain.events.produces.ProductCreated;
@@ -8,7 +9,6 @@ import com.ecommerce.crtdev.catalog_service.domain.model.Product;
 import com.ecommerce.crtdev.catalog_service.domain.ports.messaging.IEventPublisher;
 import com.ecommerce.crtdev.catalog_service.domain.ports.repository.IProductRepository;
 import com.ecommerce.crtdev.catalog_service.domain.ports.storage.IFileStorage;
-import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -24,24 +24,32 @@ public class CreateProductHandler {
         this.productRepository = productRepository;
     }
 
-    public Mono<Void> execute(CreateProductCommand command){
-        return fileStorage.storeImage(command.image())
-                .flatMap(imageUrl -> {
-                    Product product = new Product(
-                            command.sellerId(),
-                            command.name(),
-                            command.description(),
-                            command.price(),
-                            command.stock(),
-                            command.categoryId(),
-                            imageUrl
-                    );
+    public ProductResponse execute(CreateProductCommand command){
 
-                    return productRepository.save(product);
-                }).flatMap(savedProduct -> {
-                    CloudEvent<ProductCreated> event = buildEvent(savedProduct);
-                    return eventPublisher.publishEvent(savedProduct.getId(), event);
-                });
+        String imageUrl = fileStorage.storeImage(command.image());
+
+        Product product = new Product(
+                command.sellerId(),
+                command.name(),
+                command.description(),
+                command.price(),
+                command.stock(),
+                command.categoryId(),
+                imageUrl
+        );
+
+        Product savedProduct = productRepository.save(product);
+
+        CloudEvent<ProductCreated> event = buildEvent(savedProduct);
+
+        eventPublisher.publishEvent(savedProduct.getId(), event);
+
+        return new ProductResponse(
+                savedProduct.getId(),
+                savedProduct.getName(),
+                savedProduct.getDescription(),
+                savedProduct.getPrice(),
+                savedProduct.getImageUrl());
     }
 
     private CloudEvent<ProductCreated> buildEvent(Product product){

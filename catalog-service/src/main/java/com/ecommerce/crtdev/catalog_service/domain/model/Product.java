@@ -1,16 +1,18 @@
 package com.ecommerce.crtdev.catalog_service.domain.model;
 
+import java.math.BigDecimal;
+
 public class Product {
     private String id;
     private Long sellerId;
     private String name;
     private String description;
-    private double price;
+    private BigDecimal price;
     private String categoryId;
     private int stock;
     private String imageUrl;
 
-    public Product(String id, Long sellerId, String name, String description, double price, int stock, String categoryId, String imageUrl) {
+    public Product(String id, Long sellerId, String name, String description, BigDecimal price, int stock, String categoryId, String imageUrl) {
         this.id = id;
         this.sellerId = sellerId;
         this.categoryId = categoryId;
@@ -21,7 +23,7 @@ public class Product {
         this.imageUrl = imageUrl;
     }
 
-    public Product(Long sellerId, String name, String description, double price, int stock, String categoryId, String imageUrl) {
+    public Product(Long sellerId, String name, String description, BigDecimal price, int stock, String categoryId, String imageUrl) {
         this.sellerId = sellerId;
         this.categoryId = categoryId;
         this.description = description;
@@ -51,11 +53,11 @@ public class Product {
         this.name = name;
     }
 
-    public double getPrice() {
+    public BigDecimal getPrice() {
         return price;
     }
 
-    public void setPrice(double price) {
+    public void setPrice(BigDecimal price) {
         this.price = price;
     }
 

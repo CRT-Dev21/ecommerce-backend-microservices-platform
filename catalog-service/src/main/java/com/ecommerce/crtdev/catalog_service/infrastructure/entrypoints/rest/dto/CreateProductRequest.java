@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 
+import java.math.BigDecimal;
+
 public record CreateProductRequest(
 
         @NotBlank(message = "Name is required")
@@ -14,7 +16,7 @@ public record CreateProductRequest(
         String description,
 
         @Positive(message = "Price cannot be negative")
-        double price,
+        BigDecimal price,
 
         @NotNull(message = "Category is required")
         String categoryId,

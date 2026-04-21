@@ -12,16 +12,18 @@ import com.ecommerce.crtdev.catalog_service.infrastructure.entrypoints.rest.dto.
 import com.ecommerce.crtdev.catalog_service.infrastructure.entrypoints.rest.dto.UpdateProductRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
-import org.springframework.http.codec.multipart.FilePart;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.math.BigDecimal;
+import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 
 @RestController
@@ -54,9 +56,9 @@ public class ProductController {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('SELLER')")
-    public Mono<Void> createProduct(
+    public ResponseEntity<ProductResponse> createProduct(
             @RequestPart("data") @Valid CreateProductRequest request,
-            @RequestPart(value = "image") FilePart image,
+            @RequestPart(value = "image") MultipartFile image,
             @AuthenticationPrincipal Jwt jwt
     ) {
         Long sellerId = Long.parseLong(jwt.getSubject());
@@ -68,17 +70,26 @@ public class ProductController {
                 request.price(),
                 request.categoryId(),
                 request.stock(),
-                image.content()
+                image
         );
-        return createProductHandler.execute(command);
+
+        ProductResponse newProduct = createProductHandler.execute(command);
+
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(newProduct.productId())
+                .toUri();
+
+        return ResponseEntity.created(location).body(newProduct);
     }
 
     @PutMapping(value = "/{productId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('SELLER')")
-    public Mono<Void> updateProduct(
+    public ResponseEntity<ProductResponse> updateProduct(
             @PathVariable String productId,
             @RequestPart("data") UpdateProductRequest request,
-            @RequestPart(value = "image", required = false) FilePart image
+            @RequestPart(value = "image", required = false) MultipartFile image
     ) {
         UpdateProductCommand command = new UpdateProductCommand(
                 productId,
@@ -86,41 +97,45 @@ public class ProductController {
                 Optional.ofNullable(request.description()),
                 Optional.ofNullable(request.price()),
                 Optional.ofNullable(request.stock()),
-                Optional.ofNullable(image).map(FilePart::content)
+                Optional.ofNullable(image)
         );
 
-        return updateProductHandler.execute(command);
+        ProductResponse updatedProduct = updateProductHandler.execute(command);
+
+        return ResponseEntity.ok(updatedProduct);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('SELLER')")
-    public Mono<Void> deleteProduct(@PathVariable String id) {
+    public ResponseEntity<Void> deleteProduct(@PathVariable String id) {
 
-        return deleteProductHandler.execute(
-                new DeleteProductCommand(id)
-        );
+        deleteProductHandler.execute(new DeleteProductCommand(id));
+
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/homepage")
-    public Flux<ProductResponse> homepageProducts(
+    public ResponseEntity<List<ProductResponse>> homepageProducts(
             @RequestParam(defaultValue = "20") int limit
     ) {
 
-        return homepageHandler.execute(
-                new GetHomepageProductsQuery(limit)
-        );
+        List<ProductResponse> products =  homepageHandler.execute(new GetHomepageProductsQuery(limit));
+
+        return ResponseEntity.ok(products);
     }
 
     @GetMapping("/{id}")
-    public Mono<ProductResponse> getProduct(@PathVariable String id) {
+    public ResponseEntity<ProductResponse> getProduct(@PathVariable String id) {
 
-        return getProductHandler.execute(
+        ProductResponse product = getProductHandler.execute(
                 new GetProductQuery(id)
         );
+
+        return ResponseEntity.ok(product);
     }
 
     @GetMapping("/search")
-    public Flux<ProductResponse> searchProducts(
+    public ResponseEntity<List<ProductResponse>> searchProducts(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String categoryId,
             @RequestParam(required = false) BigDecimal minPrice,
@@ -136,6 +151,9 @@ public class ProductController {
                 page,
                 size
         );
-        return searchHandler.execute(query);
+
+        List<ProductResponse> products = searchHandler.execute(query);
+
+        return ResponseEntity.ok(products);
     }
 }

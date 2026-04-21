@@ -1,13 +1,11 @@
-db = db.getSiblingDB('catalog-db');
+db = db.getSiblingDB('products_db');
 
-// Crear usuario para la app
 db.createUser({
   user: 'products_user',
   pwd: 'products_pass',
-  roles: [{ role: 'readWrite', db: 'catalog-db' }]
+  roles: [{ role: 'readWrite', db: 'products_db' }]
 });
 
-// Crear colección de categorías con datos iniciales
 db.createCollection('categories');
 
 db.categories.insertMany([

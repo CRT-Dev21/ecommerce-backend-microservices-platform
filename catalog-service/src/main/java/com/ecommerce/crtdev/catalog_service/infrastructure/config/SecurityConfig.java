@@ -3,87 +3,89 @@ package com.ecommerce.crtdev.catalog_service.infrastructure.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.authentication.AbstractAuthenticationToken;
-import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
-import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
-import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
-import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
-import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverterAdapter;
-import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.reactive.CorsConfigurationSource;
-import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
-import reactor.core.publisher.Mono;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 @Configuration
-@EnableWebFluxSecurity
-@EnableReactiveMethodSecurity
+@EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
+
         config.setAllowedOriginPatterns(List.of("*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
+        source.registerCorsConfiguration("/**", config); // ← config, no source
         return source;
     }
 
     @Bean
-    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http){
-
+    public SecurityFilterChain securityFilterChain(HttpSecurity http){
         return http
-                .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .authorizeExchange(auth -> auth
+                .cors(cors->cors.configurationSource(corsConfigurationSource()))
+                .csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET, "/products/homepage").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/products/search").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/products/{id}").permitAll()
 
-                        .pathMatchers(HttpMethod.GET, "/products/homepage").permitAll()
-                        .pathMatchers(HttpMethod.GET, "/products/search").permitAll()
-                        .pathMatchers(HttpMethod.GET, "/products/{id}").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/products").hasRole("SELLER")
+                        .requestMatchers(HttpMethod.PUT, "/products/**").hasRole("SELLER")
+                        .requestMatchers(HttpMethod.DELETE, "/products/**").hasRole("SELLER")
 
-                        .pathMatchers(HttpMethod.POST, "/products").hasRole("SELLER")
-                        .pathMatchers(HttpMethod.PUT, "/products/**").hasRole("SELLER")
-                        .pathMatchers(HttpMethod.DELETE, "/products/**").hasRole("SELLER")
-
-                        .anyExchange().authenticated()
-                )
-                .oauth2ResourceServer(oauth2 ->
-                        oauth2.jwt(jwt ->
-                                jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())
-                        )
-                )
+                        .anyRequest().authenticated())
+                .oauth2ResourceServer(oauth2 ->oauth2.jwt(Customizer.withDefaults()))
                 .build();
     }
 
     @Bean
-    public ReactiveJwtDecoder jwtDecoder(
+    public JwtDecoder jwtDecoder(
             @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}") String jwkSetUri) {
-        return NimbusReactiveJwtDecoder.withJwkSetUri(jwkSetUri).build();
+        return NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
     }
 
     @Bean
-    public Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>> jwtAuthenticationConverter(){
-        JwtGrantedAuthoritiesConverter authoritiesConverter = new JwtGrantedAuthoritiesConverter();
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
 
-        authoritiesConverter.setAuthoritiesClaimName("roles");
-        authoritiesConverter.setAuthorityPrefix("ROLE_");
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            JwtGrantedAuthoritiesConverter rolesConverter = new JwtGrantedAuthoritiesConverter();
+            rolesConverter.setAuthoritiesClaimName("roles");
+            rolesConverter.setAuthorityPrefix("ROLE_");
+            Collection<GrantedAuthority> roles = rolesConverter.convert(jwt);
 
-        JwtAuthenticationConverter authenticationConverter = new JwtAuthenticationConverter();
+            JwtGrantedAuthoritiesConverter scopesConverter = new JwtGrantedAuthoritiesConverter();
+            Collection<GrantedAuthority> scopes = scopesConverter.convert(jwt);
 
-        authenticationConverter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);
+            List<GrantedAuthority> allAuthorities = new ArrayList<>();
+            allAuthorities.addAll(roles);
+            allAuthorities.addAll(scopes);
 
-        return new ReactiveJwtAuthenticationConverterAdapter(authenticationConverter);
+            return allAuthorities;
+        });
+
+        return converter;
     }
 }

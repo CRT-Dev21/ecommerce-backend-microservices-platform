@@ -1,10 +1,8 @@
 package com.ecommerce.crtdev.catalog_service.domain.ports.storage;
 
-import org.springframework.core.io.buffer.DataBuffer;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+import org.springframework.web.multipart.MultipartFile;
 
 public interface IFileStorage {
-    Mono<String> storeImage(Flux<DataBuffer> image);
-    Mono<Void> deleteImage(String imageUrl);
+    String storeImage(MultipartFile image);
+    void deleteImage(String imageUrl);
 }

@@ -7,99 +7,89 @@ import com.ecommerce.crtdev.catalog_service.infrastructure.mappers.ProductEntiti
 import com.ecommerce.crtdev.catalog_service.infrastructure.persistence.mongo.ProductDocument;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Repository;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+
+import java.util.List;
+import java.util.Optional;
 
 @Repository
 public class MongoProductRepository implements IProductRepository {
 
-    private final ReactiveMongoTemplate mongoTemplate;
+    private final MongoTemplate mongoTemplate;
 
-    public MongoProductRepository(ReactiveMongoTemplate mongoTemplate){
+    public MongoProductRepository(MongoTemplate mongoTemplate) {
         this.mongoTemplate = mongoTemplate;
     }
 
     @Override
-    public Mono<Product> save(Product product) {
-
+    public Product save(Product product) {
         ProductDocument doc = ProductEntitiesMapper.domainToDocument(product);
-
-        return mongoTemplate.save(doc)
-                .map(ProductEntitiesMapper::documentToDomain);
+        ProductDocument saved = mongoTemplate.save(doc);
+        return ProductEntitiesMapper.documentToDomain(saved);
     }
 
     @Override
-    public Mono<Product> findById(String id) {
-
-        return mongoTemplate.findById(id, ProductDocument.class)
-                .map(ProductEntitiesMapper::documentToDomain);
+    public Optional<Product> findById(String id) {
+        ProductDocument doc = mongoTemplate.findById(id, ProductDocument.class);
+        return Optional.ofNullable(doc).map(ProductEntitiesMapper::documentToDomain);
     }
 
     @Override
-    public Mono<Void> deleteById(String id) {
-
+    public void deleteById(String id) {
         Query query = new Query(Criteria.where("id").is(id));
-
-        return mongoTemplate.remove(query, ProductDocument.class)
-                .then();
+        mongoTemplate.remove(query, ProductDocument.class);
     }
 
     @Override
-    public Flux<Product> search(SearchProductsQuery query) {
-
+    public List<Product> search(SearchProductsQuery query) {
         Query mongoQuery = new Query();
 
         query.searchTerm().ifPresent(term -> {
-            Criteria nameOrDesc = new Criteria().orOperator(
+            mongoQuery.addCriteria(new Criteria().orOperator(
                     Criteria.where("name").regex(term, "i"),
                     Criteria.where("description").regex(term, "i")
-            );
-            mongoQuery.addCriteria(nameOrDesc);
+            ));
         });
 
-        query.categoryId().ifPresent(category ->
-                mongoQuery.addCriteria(Criteria.where("categoryId").is(category))
-        );
+        query.categoryId().ifPresent(cat ->
+                mongoQuery.addCriteria(Criteria.where("categoryId").is(cat)));
 
-        if(query.minPrice().isPresent() || query.maxPrice().isPresent()) {
-
+        if (query.minPrice().isPresent() || query.maxPrice().isPresent()) {
             Criteria priceCriteria = Criteria.where("price");
-
             query.minPrice().ifPresent(priceCriteria::gte);
             query.maxPrice().ifPresent(priceCriteria::lte);
-
             mongoQuery.addCriteria(priceCriteria);
         }
 
         mongoQuery.with(PageRequest.of(query.page(), query.size()));
 
         return mongoTemplate.find(mongoQuery, ProductDocument.class)
-                .map(ProductEntitiesMapper::documentToDomain);
+                .stream()
+                .map(ProductEntitiesMapper::documentToDomain)
+                .toList();
     }
 
     @Override
-    public Flux<Product> findByCategory(String categoryId) {
-
-        Query query = new Query(
-                Criteria.where("categoryId").is(categoryId)
-        );
-
-        return mongoTemplate.find(query, ProductDocument.class)
-                .map(ProductEntitiesMapper::documentToDomain);
-    }
-
-    @Override
-    public Flux<Product> findLatestProducts(int limit) {
-
+    public List<Product> findLatestProducts(int limit) {
         Query query = new Query()
                 .with(Sort.by(Sort.Direction.DESC, "_id"))
                 .limit(limit);
 
         return mongoTemplate.find(query, ProductDocument.class)
-                .map(ProductEntitiesMapper::documentToDomain);
+                .stream()
+                .map(ProductEntitiesMapper::documentToDomain)
+                .toList();
+    }
+
+    @Override
+    public List<Product> findByCategory(String categoryId) {
+        Query query = new Query(Criteria.where("categoryId").is(categoryId));
+        return mongoTemplate.find(query, ProductDocument.class)
+                .stream()
+                .map(ProductEntitiesMapper::documentToDomain)
+                .toList();
     }
 }

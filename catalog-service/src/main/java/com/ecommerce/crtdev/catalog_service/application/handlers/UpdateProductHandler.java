@@ -1,6 +1,7 @@
 package com.ecommerce.crtdev.catalog_service.application.handlers;
 
 import com.ecommerce.crtdev.catalog_service.application.commands.UpdateProductCommand;
+import com.ecommerce.crtdev.catalog_service.application.queries.ProductResponse;
 import com.ecommerce.crtdev.catalog_service.domain.events.CloudEvent;
 import com.ecommerce.crtdev.catalog_service.domain.events.EventMetadata;
 import com.ecommerce.crtdev.catalog_service.domain.events.produces.ProductPriceChanged;
@@ -10,7 +11,7 @@ import com.ecommerce.crtdev.catalog_service.domain.ports.messaging.IEventPublish
 import com.ecommerce.crtdev.catalog_service.domain.ports.repository.IProductCache;
 import com.ecommerce.crtdev.catalog_service.domain.ports.repository.IProductRepository;
 import com.ecommerce.crtdev.catalog_service.domain.ports.storage.IFileStorage;
-import reactor.core.publisher.Mono;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -28,55 +29,46 @@ public class UpdateProductHandler {
         this.eventPublisher = eventPublisher;
     }
 
-    public Mono<Void> execute(UpdateProductCommand command) {
+    @Transactional
+    public ProductResponse execute(UpdateProductCommand command) {
+        Product product = productRepository.findById(command.productId())
+                .orElseThrow(() -> new ProductNotFoundException(command.productId()));
 
-        return productRepository.findById(command.productId())
+        boolean priceChanged = command.price()
+                .filter(newPrice -> !newPrice.equals(product.getPrice()))
+                .isPresent();
 
-                .switchIfEmpty(Mono.error(new ProductNotFoundException(command.productId())))
+        String oldImageUrl = product.getImageUrl();
+        handleImageUpdate(product, command);
 
-                .flatMap(product -> {
+        command.name().ifPresent(product::setName);
+        command.description().ifPresent(product::setDescription);
+        command.price().ifPresent(product::setPrice);
+        command.stock().ifPresent(product::setStock);
 
-                    boolean priceWillChange =
-                            command.price().isPresent()
-                                    && !command.price().get().equals(product.getPrice());
+        Product savedProduct = productRepository.save(product);
 
-                    return handleImageUpdate(product, command)
+        if (priceChanged) {
+            eventPublisher.publishEvent(savedProduct.getId(), buildEvent(savedProduct));
+        }
 
-                            .map(prod -> {
-                                command.name().ifPresent(prod::setName);
-                                command.description().ifPresent(prod::setDescription);
-                                command.price().ifPresent(prod::setPrice);
-                                command.stock().ifPresent(prod::setStock);
-                                return prod;
-                            })
+        productCache.evictProduct(savedProduct.getId());
 
-                            .flatMap(productRepository::save)
+        command.image().ifPresent(img -> fileStorage.deleteImage(oldImageUrl));
 
-                            .flatMap(savedProduct -> {
-
-                                Mono<Void> eventMono = Mono.empty();
-
-                                if (priceWillChange) {
-                                    CloudEvent<ProductPriceChanged> event = buildEvent(savedProduct);
-                                    eventMono = eventPublisher.publishEvent(savedProduct.getId(), event);
-                                }
-
-                                return eventMono
-                                        .then(productCache.evictProduct(savedProduct.getId()));
-                            });
-                });
+        return new ProductResponse(
+                savedProduct.getId(),
+                savedProduct.getName(),
+                savedProduct.getDescription(),
+                savedProduct.getPrice(),
+                savedProduct.getImageUrl());
     }
 
-    private Mono<Product> handleImageUpdate(Product product, UpdateProductCommand command){
-        return command.image()
-                .map(img ->
-                    fileStorage.deleteImage(product.getImageUrl())
-                            .then(fileStorage.storeImage(img))
-                            .map(url -> {
-                                product.setImageUrl(url);
-                                return product;
-                            })
-        ).orElse(Mono.just(product));
+    private void handleImageUpdate(Product product, UpdateProductCommand command) {
+        command.image().ifPresent(img -> {
+            String newImageUrl = fileStorage.storeImage(img);
+            product.setImageUrl(newImageUrl);
+        });
     }
 
     private CloudEvent<ProductPriceChanged> buildEvent(Product product){

@@ -5,6 +5,8 @@ import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.math.BigDecimal;
+
 @Document("products")
 @CompoundIndex(name="search_index", def="{'name': 'text', 'description':'text'}")
 public class ProductDocument {
@@ -14,7 +16,7 @@ public class ProductDocument {
     private Long sellerId;
     private String name;
     private String description;
-    private double price;
+    private BigDecimal price;
     @Indexed
     private String categoryId;
     private int stock;
@@ -60,11 +62,11 @@ public class ProductDocument {
         this.name = name;
     }
 
-    public double getPrice() {
+    public BigDecimal getPrice() {
         return price;
     }
 
-    public void setPrice(double price) {
+    public void setPrice(BigDecimal price) {
         this.price = price;
     }
 

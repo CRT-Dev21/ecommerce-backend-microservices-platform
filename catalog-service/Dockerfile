@@ -1,20 +1,23 @@
-FROM maven:3.9.6-eclipse-temurin-17 AS builder
+FROM maven:3.9.6-eclipse-temurin-21 AS builder
 WORKDIR /build
 
-COPY catalog-service ./catalog-service
-RUN mvn -f ./catalog-service/pom.xml clean package -DskipTests
+COPY catalog-service/pom.xml .
+RUN mvn dependency:go-offline -B
 
-FROM eclipse-temurin:17-jre-jammy
+COPY catalog-service/src ./src
+RUN mvn clean package -DskipTests -B
+
+FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 
-RUN useradd -ms /bin/bash springuser
+USER root
+RUN apt-get update && apt-get install -y unzip && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /app/product/image && chown -R springuser:springuser /app/product
+RUN addgroup --system spring && adduser --system spring --ingroup spring
+RUN mkdir -p /app/products/images && chown -R spring:spring /app
 
-USER springuser
+USER spring:spring
 
-COPY --from=builder /build/catalog-service/target/catalog-service-0.0.1-SNAPSHOT.jar app.jar
+COPY --from=builder /build/target/*.jar app.jar
 
-EXPOSE 8081
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-XX:+UseStringDeduplication", "-jar", "app.jar"]

@@ -39,6 +39,12 @@ services:
       MONGO_INITDB_DATABASE: products_db
     volumes:
       - ./init/mongo-init.js:/docker-entrypoint-initdb.d/init.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: "10s"
+      timeout: "5s"
+      retries: 5
+      start_period: "10s"
 
   catalog-redis:
     image: redis:7
@@ -55,26 +61,21 @@ services:
       kafka-init:
         condition: service_completed_successfully
       catalog-db:
-        condition: service_started
+        condition: service_healthy
       catalog-redis:
         condition: service_started
       auth-service:
         condition: service_started
     ports:
       - "8082:8082"
-    deploy:
-      resources:
-        limits:
-          memory: 768M
-          cpus: '1.0'
     environment:
-      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
-      SPRING_DATA_MONGODB_URI: mongodb://mongo:mongouser@catalog-db:27017/catalog-db?authSource=admin
+      JAVA_TOOL_OPTIONS: ""
+      SPRING_DATA_MONGODB_URI: mongodb://mongo:mongouser@catalog-db:27017/products_db?authSource=admin
       REDIS_HOST: catalog-redis
       REDIS_PORT: 6379
       SPRING_DATA_REDIS_URI: catalog-redis://catalog-redis:6379
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/oauth2/jwks
 
   sellers-db:
     image: postgres:16
@@ -105,7 +106,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgreuser
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/oauth2/jwks
 
   cart-redis:
     image: redis:7
@@ -135,7 +136,7 @@ services:
       REDIS_HOST: cart-redis
       REDIS_PORT: 6379
       SPRING_DATA_REDIS_URI: cart-redis://cart-redis:6379
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/oauth2/jwks
 
   inventory-db:
     image: postgres:16
@@ -166,7 +167,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgreuser
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/oauth2/jwks
 
   order-db:
     image: postgres:16
@@ -197,7 +198,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgreuser
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/oauth2/jwks
       ORDER_SERVICE_CLIENT_SECRET: order-service-secret
       AUTH_SERVICE_TOKEN_URI: http://auth-service:8080/oauth2/token
       INVENTORY_SERVICE_URL: http://inventory-service:8085
@@ -231,7 +232,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgreuser
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8080/oauth2/jwks
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/oauth2/jwks
       PAYMENT_SERVICE_CLIENT_SECRET: payment-service-secret
       AUTH_SERVICE_TOKEN_URI: http://auth-service:8080/oauth2/token
       SELLER_SERVICE_URL: http://seller-service:8082

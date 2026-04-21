@@ -2,6 +2,7 @@
   <dictionary name="project">
     <words>
       <w>crtdev</w>
+      <w>healthcheck</w>
       <w>postgreuser</w>
       <w>resourceserver</w>
     </words>

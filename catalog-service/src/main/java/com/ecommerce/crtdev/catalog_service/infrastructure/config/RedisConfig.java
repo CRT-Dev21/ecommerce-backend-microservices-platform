@@ -1,26 +1,28 @@
 package com.ecommerce.crtdev.catalog_service.infrastructure.config;
 
-import com.ecommerce.crtdev.catalog_service.infrastructure.persistence.redis.ProductCacheEntity;
+import com.ecommerce.crtdev.catalog_service.domain.model.Product;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.redis.connection.ReactiveRedisConnectionFactory;
-import org.springframework.data.redis.core.ReactiveRedisTemplate;
-import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
-import org.springframework.data.redis.serializer.RedisSerializationContext;
-import org.springframework.data.redis.serializer.StringRedisSerializer;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.*;
 
 @Configuration
 public class RedisConfig {
 
     @Bean
-    public ReactiveRedisTemplate<String, ProductCacheEntity> reactiveRedisTemplate(ReactiveRedisConnectionFactory factory) {
+    public RedisTemplate<String, Product> reactiveRedisTemplateReactiveRedisConnectionFactory (RedisConnectionFactory factory) {
+        RedisTemplate<String, Product> template = new RedisTemplate<>();
+        template.setConnectionFactory(factory);
 
-        RedisSerializationContext<String, ProductCacheEntity> context =
-                RedisSerializationContext
-                        .<String, ProductCacheEntity>newSerializationContext(new StringRedisSerializer())
-                        .value(new Jackson2JsonRedisSerializer<>(ProductCacheEntity.class))
-                        .build();
+        template.setKeySerializer(RedisSerializer.string());
+        template.setValueSerializer(RedisSerializer.json());
 
-        return new ReactiveRedisTemplate<>(factory, context);
+        template.setHashKeySerializer(RedisSerializer.string());
+        template.setHashValueSerializer(RedisSerializer.json());
+
+        template.afterPropertiesSet();
+
+        return template;
     }
 }

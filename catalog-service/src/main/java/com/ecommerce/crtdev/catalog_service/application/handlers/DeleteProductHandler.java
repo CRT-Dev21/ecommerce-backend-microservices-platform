@@ -4,11 +4,9 @@ import com.ecommerce.crtdev.catalog_service.application.commands.DeleteProductCo
 import com.ecommerce.crtdev.catalog_service.domain.events.CloudEvent;
 import com.ecommerce.crtdev.catalog_service.domain.events.EventMetadata;
 import com.ecommerce.crtdev.catalog_service.domain.events.produces.ProductDeleted;
-import com.ecommerce.crtdev.catalog_service.domain.exception.ProductNotFoundException;
 import com.ecommerce.crtdev.catalog_service.domain.ports.messaging.IEventPublisher;
 import com.ecommerce.crtdev.catalog_service.domain.ports.repository.IProductCache;
 import com.ecommerce.crtdev.catalog_service.domain.ports.repository.IProductRepository;
-import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -24,17 +22,15 @@ public class DeleteProductHandler {
         this.productCache =productCache;
     }
 
-    public Mono<Void> execute(DeleteProductCommand command) {
-        return productRepository.findById(command.productId())
-                .switchIfEmpty(Mono.error(new ProductNotFoundException(command.productId())))
-                .flatMap(product -> {
-                    return productRepository.deleteById(product.getId())
-                            .then(Mono.defer(() -> {
-                                CloudEvent<ProductDeleted> event = buildEvent(product.getId());
-                                return eventPublisher.publishEvent(product.getId(), event);
-                            }))
-                            .then(productCache.evictProduct(product.getId()));
-                });
+    public void execute(DeleteProductCommand command) {
+
+        productRepository.deleteById(command.productId());
+
+        productCache.evictProduct(command.productId());
+
+        CloudEvent<ProductDeleted> event = buildEvent(command.productId());
+
+        eventPublisher.publishEvent(command.productId(), event);
     }
 
     private CloudEvent<ProductDeleted> buildEvent(String productId){

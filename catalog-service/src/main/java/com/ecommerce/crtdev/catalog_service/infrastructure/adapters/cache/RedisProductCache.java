@@ -2,45 +2,34 @@ package com.ecommerce.crtdev.catalog_service.infrastructure.adapters.cache;
 
 import com.ecommerce.crtdev.catalog_service.domain.model.Product;
 import com.ecommerce.crtdev.catalog_service.domain.ports.repository.IProductCache;
-import com.ecommerce.crtdev.catalog_service.infrastructure.mappers.ProductEntitiesMapper;
-import com.ecommerce.crtdev.catalog_service.infrastructure.persistence.redis.ProductCacheEntity;
-import org.springframework.data.redis.core.ReactiveRedisTemplate;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Repository;
-import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.Optional;
 
 @Repository
 public class RedisProductCache implements IProductCache {
 
-    private final ReactiveRedisTemplate<String, ProductCacheEntity> redisTemplate;
+    private final RedisTemplate<String, Product> redisTemplate;
+    private static final String PREFIX = "product:";
 
-    public RedisProductCache(ReactiveRedisTemplate<String, ProductCacheEntity> redisTemplate){
+    public RedisProductCache(RedisTemplate<String, Product> redisTemplate){
         this.redisTemplate = redisTemplate;
     }
 
-    public String key(String id){
-        return "product:"+id;
+    @Override
+    public Optional<Product> getProduct(String productId) {
+        return Optional.ofNullable(redisTemplate.opsForValue().get(PREFIX + productId));
     }
 
     @Override
-    public Mono<Product> getProduct(String productId) {
-        return redisTemplate.opsForValue()
-                .get(key(productId))
-                .map(ProductEntitiesMapper::cacheToDomain);
+    public void putProduct(Product product) {
+        redisTemplate.opsForValue().set(PREFIX + product.getId(), product, Duration.ofHours(24));
     }
 
     @Override
-    public Mono<Void> putProduct(Product product) {
-        ProductCacheEntity entity = ProductEntitiesMapper.domainToCache(product);
-
-        return redisTemplate.opsForValue()
-                .set(key(product.getId()), entity, Duration.ofMinutes(10))
-                .then();
-    }
-
-    @Override
-    public Mono<Void> evictProduct(String productId) {
-        return redisTemplate.delete(key(productId)).then();
+    public void evictProduct(String productId) {
+        redisTemplate.delete(PREFIX + productId);
     }
 }

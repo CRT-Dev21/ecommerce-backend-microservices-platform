@@ -2,11 +2,9 @@ package com.ecommerce.crtdev.catalog_service.infrastructure.adapters.messaging;
 
 import com.ecommerce.crtdev.catalog_service.domain.events.CloudEvent;
 import com.ecommerce.crtdev.catalog_service.domain.ports.messaging.IEventPublisher;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class KafkaEventPublisher implements IEventPublisher {
@@ -20,12 +18,9 @@ public class KafkaEventPublisher implements IEventPublisher {
     }
 
     @Override
-    public Mono<Void> publishEvent(String key, CloudEvent<?> event) {
-        return Mono.fromCallable(() -> objectMapper.writeValueAsString(event))
-                .flatMap(json -> Mono.fromFuture(
-                        kafkaTemplate.send("catalog.events", key, json).toCompletableFuture()
-                ))
-                .publishOn(Schedulers.boundedElastic())
-                .then();
+    public void publishEvent(String key, CloudEvent<?> event) {
+        String json = objectMapper.writeValueAsString(event);
+
+        kafkaTemplate.send("catalog.events", key, json);
     }
 }
