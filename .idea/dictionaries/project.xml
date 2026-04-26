@@ -4,6 +4,7 @@
       <w>crtdev</w>
       <w>healthcheck</w>
       <w>postgreuser</w>
+      <w>qdrant</w>
       <w>resourceserver</w>
     </words>
   </dictionary>

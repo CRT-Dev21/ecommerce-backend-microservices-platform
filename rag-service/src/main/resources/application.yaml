@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: rag-service
+
+  kafka:
+    bootstrap-servers: kafka:9092
+    consumer:
+      group-id: rag-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+  ai:
+    ollama:
+      base-url: http://ollama:11434
+      embedding:
+        model: nomic-embed-text
+      chat:
+        model: llama3.2
+        options:
+          temperature: 0.3
+    vectorstore:
+      qdrant:
+        host: qdrant
+        port: 6334
+        collection-name: products
+        initialize-schema: true
+
+server:
+  port: 8089

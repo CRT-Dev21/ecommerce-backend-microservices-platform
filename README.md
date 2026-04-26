@@ -1,6 +1,6 @@
-# eCommerce Backend — Production-Grade Microservices Platform
+# AI-Powered eCommerce Backend — Production-Grade Microservices Platform
 
-A fully distributed eCommerce backend built from scratch with production-grade practices. This isn't a tutorial project, every architectural decision is intentional, documented, and justified. The goal was to build a system that degrades gracefully under load, recovers from failures automatically, and scales horizontally when a single instance reaches its limit.
+A fully distributed eCommerce backend built from scratch with production-grade practices. This isn't a tutorial project, every architectural decision is intentional, documented, and justified. The goal was to build a system that degrades gracefully under load, recovers from failures automatically, scales horizontally when a single instance reaches its limit, and answers natural-language product queries using a RAG pipeline built on top of the existing event-driven infrastructure.
 
 ---
 
@@ -8,15 +8,17 @@ A fully distributed eCommerce backend built from scratch with production-grade p
 
 ![Architecture Diagram](docs/architecture.png)
 
-The system is organized into four layers:
+The system is organized into five layers:
 
 - **Edge Layer** — API Gateway handles routing, rate limiting, CORS, and security headers. For screens that require data from multiple services (such as a product detail page combining catalog, inventory, and seller info), the Gateway performs parallel request aggregation internally, keeping the frontend interface simple without adding an extra service to the infrastructure.
 
-- **Services Layer** — Eight independent microservices, each owning its domain completely. No shared databases. No shared libraries.
+- **Services Layer** — Nine independent microservices, each owning its domain completely. No shared databases. No shared libraries.
 
-- **Middleware Layer** — Apache Kafka decouples asynchronous communication.
+- **Middleware Layer** — Apache Kafka decouples asynchronous communication. Product lifecycle events trigger automatic re-indexing in the RAG pipeline.
 
-- **Data Layer** — Each service owns its persistence technology. MongoDB for the product catalog (flexible document model), PostgreSQL for transactional services (ACID guarantees), Redis for session-like data (cart, rate limiting).
+- **AI Layer** — Ollama runs the embedding model (`nomic-embed-text`) and the generative model (`llama3.2`) locally. In production, this layer could be replaced by Amazon Bedrock with zero changes to the RAG Service domain.
+
+- **Data Layer** — Each service owns its persistence technology. MongoDB for the product catalog (flexible document model), PostgreSQL for transactional services (ACID guarantees), Redis for session-like data (cart, rate limiting), Qdrant as the vector store for semantic search.
 
 ---
 
@@ -32,22 +34,53 @@ The system is organized into four layers:
 | **Cart Service** | Session cart per authenticated user | Spring WebFlux, Redis |
 | **Seller Service** | Seller profiles, bank account management | Spring MVC, PostgreSQL, Kafka |
 | **Notification Service** | Real email delivery on order events | Spring Boot, JavaMail (Gmail SMTP), Kafka |
+| **RAG Service** | Natural-language product search powered by vector embeddings and a local LLM | Spring Boot 4, Java 21, Spring AI, Kafka, Qdrant, Ollama |
 | **API Gateway** | Routing, rate limiting, security headers, CORS | Spring Cloud Gateway, Redis |
 
 ---
+
+## RAG Service — AI-Powered Product Search
+
+The RAG Service adds natural-language search to the platform. A user can ask *"I need something portable for listening to music at the gym"* and receive a grounded answer based exclusively on real products in the catalog — no hallucinated products, no invented prices.
+
+### How it works
+
+The pipeline has two independent flows:
+
+**Indexing flow (event-driven)**
+The RAG Service consumes `catalog.events` from Kafka. Every time a product is created, updated, or deleted in the Catalog Service, an event is published automatically. The RAG Service reacts to those events by generating a vector embedding of the product's text (name, description, category) via Ollama and upserting it into Qdrant. Deletions remove the vector from the store. There is no cron job, no polling, no manual re-indexing trigger under normal operation.
+
+**Query flow (on demand)**
+When a user submits a natural-language query, the RAG Service embeds the query using the same model, performs a vector similarity search in Qdrant to retrieve the top-K most semantically relevant products, constructs a prompt with those products as context, and sends it to the LLM. The LLM generates a response grounded exclusively in the retrieved products.
+
+The response includes both the generated answer and the source products used as context, making the retrieval fully auditable.
+
+### Why retrieval quality matters more than the LLM
+
+The LLM can only reason about what the retrieval step gives it. If Qdrant returns irrelevant products, the LLM cannot compensate, it simply never sees the correct ones. The system prompt explicitly instructs the model not to invent products or prices and to state clearly when no relevant product exists in the catalog. This is what prevents hallucination in a RAG system: constraining the generation to the retrieved context, not relying on the model's parametric knowledge.
+
+### Hexagonal Architecture applied to RAG
+
+| Port | Local adapter | Production adapter (AWS) |
+|---|---|---|
+| `EmbeddingPort` | `OllamaEmbeddingAdapter` | `BedrockTitanEmbeddingAdapter` |
+| `TextGenerationPort` | `OllamaGenerationAdapter` | `BedrockClaudeAdapter` |
+| `VectorStorePort` | `QdrantVectorStoreAdapter` | `OpenSearchVectorStoreAdapter` |
+
+Switching from the local stack to AWS Bedrock + OpenSearch Serverless requires adding new adapter classes. Zero domain changes. Zero use case changes.
 
 ## Architectural & Design Patterns
 
 Every pattern in this project was chosen deliberately. Here's what was applied and why.
 
 ### Hexagonal Architecture (Ports & Adapters)
-Applied to **Catalog Service**. The domain logic has zero knowledge of MongoDB, Redis, or Kafka. It only knows about interfaces (ports). MongoDB, Redis, and Kafka are adapters that implement those interfaces. Switching image storage from local filesystem to S3 requires adding one adapter class. Zero domain changes. This is the reason the service could be tested in isolation and load-tested without any external dependencies being a bottleneck.
+Applied to **Catalog Service** and **RAG Service**. The domain logic has zero knowledge of MongoDB, Redis, Kafka, Ollama, or Qdrant. It only knows about interfaces (ports). MongoDB, Redis, Kafka, Ollama, and Qdrant are adapters that implement those interfaces. Switching them for some Amazon Service like Amazon Bedrock or S3 requires adding one adapter class. Zero domain changes.
 
 ### Saga Pattern (Choreography)
 Applied to the **Order → Payment → Inventory → Notification** flow. A distributed transaction spans four services and cannot be wrapped in a single ACID transaction. The Saga ensures consistency through compensation: if payment fails, stock is automatically reversed and the buyer is notified. Every Saga step publishes an event that the next participant consumes. Every compensation action is the inverse of the forward step.
 
 ### Idempotent Consumers
-Every service that has important tasks related to events checks a `processed_events` table before processing. If the `eventId` already exists, the message is silently skipped. This makes every consumer idempotent, reprocessing the same event any number of times produces the same result. This is critical for a system where Kafka may deliver messages more than once and the process within it are critical.
+Every service that has important tasks related to events checks a `processed_events` table before processing. If the `eventId` already exists, the message is silently skipped. This makes every consumer idempotent — reprocessing the same event any number of times produces the same result. This is critical for a system where Kafka may deliver messages more than once and the processes within it are critical.
 
 ### Event Sourcing Metadata (Correlation & Causation)
 Every event part of the Saga carries:
@@ -58,7 +91,7 @@ Every event part of the Saga carries:
 This makes the entire distributed transaction traceable across services without a centralized tracing system.
 
 ### Read Model / Local Cache Pattern
-**Order Service** maintains its own `product_catalog_snapshot` table, fed by Catalog events (`ProductCreated`, `ProductDeleted`, `ProductPriceChanged`). When a user checks out, prices are validated locally, no synchronous call to Catalog at the most critical moment in the system. This is eventual consistency as a deliberate trade-off: a slightly stale price snapshot is far less dangerous than a synchronous dependency that can fail mid-checkout.
+**Order Service** maintains its own `product_catalog_snapshot` table, fed by Catalog events (`ProductCreated`, `ProductDeleted`, `ProductPriceChanged`). When a user checks out, prices are validated locally — no synchronous call to Catalog at the most critical moment in the system. This is eventual consistency as a deliberate trade-off: a slightly stale price snapshot is far less dangerous than a synchronous dependency that can fail mid-checkout.
 
 ### Bounded Contexts via DDD
 Domain-Driven Design guided the service boundaries in this system. The key insight is that the same real-world concept can belong to different bounded contexts, and forcing them into a single service creates the God Service anti-pattern.
@@ -70,11 +103,11 @@ Domain-Driven Design guided the service boundaries in this system. The key insig
 This separation also made independent technical decisions possible: Catalog uses virtual threads with Redis (optimized for high-concurrency reads). Inventory is imperative with PostgreSQL and optimistic locking (optimized for consistent concurrent writes). A single merged service could not have made both decisions.
 
 ### Circuit Breaker + Retry (Resilience4j)
-Applied to the **Order → Inventory** synchronous call. The call is the only synchronous dependency in the entire checkout flow, it exists because stock reservation must be synchronous (you cannot tell 1,000 users their order was accepted and then fail 900 of them asynchronously). 
+Applied to the **Order → Inventory** synchronous call. The call is the only synchronous dependency in the entire checkout flow, it exists because stock reservation must be synchronous (you cannot tell 1,000 users their order was accepted and then fail 900 of them asynchronously).
 
 Is that how MercadoLibre or Amazon does it? No. At their scale, an async approach with eventual consistency makes sense, they have dedicated infrastructure to handle overselling, complex compensation flows, and the operational maturity to manage the trade-offs that come with it. At that scale, the cost of a synchronous dependency outweighs the cost of managing phantom orders.
 
-But in my project is a service with no dedicated oversell management layer. Here, the synchronous call is the simpler and safer choice, and simpler is often the right engineering decision when you don't have the scale that justifies the complexity.
+But in this project there is no dedicated oversell management layer. Here, the synchronous call is the simpler and safer choice, and simpler is often the right engineering decision when you don't have the scale that justifies the complexity.
 
 Resilience4j wraps this call with:
 - **Retry**: 2 attempts with exponential backoff (300ms, 600ms)
@@ -90,15 +123,15 @@ Each microservice validates tokens independently, security is not centralized in
 ### Card Tokenization
 Card data never enters the backend system. The frontend tokenizes the card number with the Payment Service before the checkout flow begins. What flows through Order Service and the Saga is an opaque token string. No PCI scope. No card numbers in any database, log, or event.
 
-
 ### Tolerant Consumer
-Every Kafka consumer in this system is deliberately tolerant of schema evolution. All consumers are configured with `FAIL_ON_UNKNOWN_PROPERTIES = false`, if a producer adds new fields to an event, consumers that don't need those fields simply ignore them and continue processing normally. No consumer breaks. No deployment coordination required.
+Every Kafka consumer in this system is deliberately tolerant of schema evolution. All consumers are configured with `FAIL_ON_UNKNOWN_PROPERTIES = false` — if a producer adds new fields to an event, consumers that don't need those fields simply ignore them and continue processing normally. No consumer breaks. No deployment coordination required.
+
 This means a producer can evolve its event schema forward (adding optional fields) without any consumer needing to be updated or redeployed simultaneously. The only contract that matters is: don't remove fields that consumers depend on, and don't change their meaning. Everything else is free to change independently.
 
-This is the pattern that makes truly independent deployments possible in an event-driven system. Without it, every schema change becomes a coordinated multi-service deployment, which defeats the purpose of having independent services in the first place
+This is the pattern that makes truly independent deployments possible in an event-driven system. Without it, every schema change becomes a coordinated multi-service deployment, which defeats the purpose of having independent services in the first place.
 
 ### Multi-Seller Order Splitting
-A single checkout request containing products from multiple sellers is automatically split into independent orders, one per seller, each with its own lifecycle, payment, and Saga. This is how MercadoLibre work. If seller A's stock fails, seller B's order still proceeds. The `checkoutId` groups all resulting orders for the user's view.
+A single checkout request containing products from multiple sellers is automatically split into independent orders, one per seller, each with its own lifecycle, payment, and Saga. This is how MercadoLibre works. If seller A's stock fails, seller B's order still proceeds. The `checkoutId` groups all resulting orders for the user's view.
 
 ![Saga Diagram](docs/order-splitting.png)
 
@@ -116,13 +149,6 @@ The Catalog Service was benchmarked twice under identical conditions to evaluate
 
 - 70% homepage reads (Redis cache)
 - 20% product creation (multipart upload -> MongoDB -> Kafka)
-- 10% search with filters (MongoDB)
-
-
-
-The reactive stack was validated under real load. The test used a realistic traffic distribution:
-- 70% homepage reads (Redis cache)
-- 20% product creation (multipart upload → Kafka)
 - 10% search with filters (MongoDB)
 
 ### Normal load — 200 VUs, 5 minutes (reactive baseline)
@@ -150,15 +176,14 @@ Two identical services, two different threading models:
 | Error rate | 0.000% | 0.000% | equal |
 | Products created | 60,782 | 151,515 | **+149%** |
 
-
 **What the breaking point revealed:** At 800 VUs, the catalog-service CPU hit 106% of its single allocated core. Redis was at 0.26%. MongoDB at 12.82%. Kafka stable. The bottleneck was exclusively the CPU, the Netty event loop was saturated processing concurrent multipart uploads, which delayed even cached responses.
 
 The service never crashed. It degraded gracefully and accepted every request.
 
 **Why virtual threads won:** The reactive version wasn't slow because WebFlux is bad. It was slow because the overhead of the reactive model stopped paying for itself. Every request passed through Reactor's operator chain — flatMap, context propagation, scheduler switching — machinery that exists to maximize throughput when I/O latency is high and unpredictable. When your dependencies respond in single-digit milliseconds, you pay the cost of a non-blocking pipeline without getting the benefit.
- 
-Virtual threads flip the economics. When a virtual thread blocks waiting for Redis, MongoDB, or a Kafka ack like in this case, the underlying OS thread is immediately freed and picks up another request. No operator chains. No scheduler overhead. No backpressure management. The JVM handles the concurrency, and the code stays readable.
- 
+
+Virtual threads flip the economics. When a virtual thread blocks waiting for Redis, MongoDB, or a Kafka ack, the underlying OS thread is immediately freed and picks up another request. No operator chains. No scheduler overhead. No backpressure management. The JVM handles the concurrency, and the code stays readable.
+
 **When does WebFlux still make sense?** Streaming, SSE, or workloads with genuinely unpredictable external latency like third-party payment gateways, slow upstream APIs, real-time event pipelines where backpressure is a real concern. For a service where latency is bounded and infrastructure is controlled, virtual threads win. And your team doesn't need to learn Reactor to get there.
 
 ### Reactive Catalog Service test results
@@ -177,6 +202,8 @@ Virtual threads flip the economics. When a virtual thread blocks waiting for Red
 - Docker Desktop
 - Java 21
 - Maven
+
+> **Note on first run:** The RAG Service depends on Ollama pulling two models (`nomic-embed-text` ~800MB, `llama3.2` ~2GB) before it starts. On first `docker-compose up` this can take several minutes depending on your connection. Subsequent starts use the cached models from the Docker volume.
 
 ### 1. Clone the repository
 ```bash
@@ -211,11 +238,25 @@ docker-compose up --build
 | Inventory Service | 8086 |
 | Cart Service | 8087 |
 | Notification Service | 8088 |
+| RAG Service | 8089 |
 | Kafka UI | 8090 |
+| Qdrant Dashboard | 6333 |
 
 ### 5. Authenticate
 
 Import the Postman collection from `docs/postman_collection.json` for the complete request flow including OAuth2 authorization.
+
+### 6. Test the RAG Service
+
+Create products through the Catalog Service first, then query:
+
+```bash
+curl -X POST http://localhost:8089/ai/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "I need a powerful computer for gaming"}'
+```
+
+Products are indexed automatically via Kafka — no manual step required.
 
 ---
 
@@ -237,11 +278,13 @@ Import the Postman collection from `docs/postman_collection.json` for the comple
 
 **Languages & Runtimes:** Java 21
 
-**Frameworks:** Spring Boot 4 (Catalog), Spring Boot 3.5 (remaining services), Spring MVC, Spring WebFlux, Spring Security, Spring Data JPA, Spring Data MongoDB Reactive, Spring Data Redis Reactive, Spring Cloud Gateway, Spring Authorization Server
+**Frameworks:** Spring Boot 4 (Catalog, RAG), Spring Boot 3.5 (remaining services), Spring MVC, Spring WebFlux, Spring AI, Spring Security, Spring Data JPA, Spring Data MongoDB Reactive, Spring Data Redis Reactive, Spring Cloud Gateway, Spring Authorization Server
+
+**AI & ML:** Spring AI, Ollama (`nomic-embed-text` for embeddings, `llama3.2` for generation)
 
 **Messaging:** Apache Kafka
 
-**Databases:** PostgreSQL, MongoDB, Redis
+**Databases:** PostgreSQL, MongoDB, Redis, Qdrant (vector store)
 
 **Resilience:** Resilience4j (Circuit Breaker, Retry)
 
@@ -251,7 +294,7 @@ Import the Postman collection from `docs/postman_collection.json` for the comple
 
 **Containerization:** Docker, Docker Compose
 
-**Observability:** Kafka UI, structured logging with correlation IDs
+**Observability:** Kafka UI, Qdrant Dashboard, structured logging with correlation IDs
 
 ---
 

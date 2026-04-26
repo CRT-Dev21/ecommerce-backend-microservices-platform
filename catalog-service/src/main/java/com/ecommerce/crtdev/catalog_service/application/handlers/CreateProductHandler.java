@@ -57,6 +57,8 @@ public class CreateProductHandler {
                 product.getSellerId(),
                 product.getId(),
                 product.getName(),
+                product.getDescription(),
+                product.getCategoryId(),
                 product.getPrice(),
                 product.getStock());
 
