@@ -11,6 +11,8 @@ import com.ecommerce.crtdev.catalog_service.application.queries.SearchProductsQu
 import com.ecommerce.crtdev.catalog_service.infrastructure.entrypoints.rest.dto.CreateProductRequest;
 import com.ecommerce.crtdev.catalog_service.infrastructure.entrypoints.rest.dto.UpdateProductRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -27,7 +29,7 @@ import java.util.List;
 import java.util.Optional;
 
 @RestController
-@RequestMapping("/products")
+@RequestMapping("/api/catalog/products")
 @Validated
 public class ProductController {
 
@@ -116,9 +118,8 @@ public class ProductController {
 
     @GetMapping("/homepage")
     public ResponseEntity<List<ProductResponse>> homepageProducts(
-            @RequestParam(defaultValue = "20") int limit
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int limit
     ) {
-
         List<ProductResponse> products =  homepageHandler.execute(new GetHomepageProductsQuery(limit));
 
         return ResponseEntity.ok(products);
@@ -136,19 +137,19 @@ public class ProductController {
 
     @GetMapping("/search")
     public ResponseEntity<List<ProductResponse>> searchProducts(
-            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String searchTerm,
             @RequestParam(required = false) String categoryId,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(required = false) String lastId,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         SearchProductsQuery query = new SearchProductsQuery(
-                Optional.ofNullable(q),
+                Optional.ofNullable(searchTerm),
                 Optional.ofNullable(categoryId),
                 Optional.ofNullable(minPrice),
                 Optional.ofNullable(maxPrice),
-                page,
+                Optional.ofNullable(lastId),
                 size
         );
 

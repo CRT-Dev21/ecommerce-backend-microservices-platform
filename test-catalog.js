@@ -30,7 +30,7 @@ export const options = {
 };
 
 const binFile = open('./image.png', 'b');
-const TOKEN = __ENV.TOKEN || 'eyJraWQiOiI5YWQ3OWE4Zi1kNDZkLTQyNWEtYjNmZC0xNjk5ODc1ZmY2NDgiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxIiwiYXVkIjoicG9zdG1hbi1jbGllbnQiLCJuYmYiOjE3NzY3OTU5NjYsInNjb3BlIjpbIm9wZW5pZCIsInByb2ZpbGUiXSwicm9sZXMiOlsiU0VMTEVSIiwiVVNFUiJdLCJpc3MiOiJodHRwOi8vYXV0aC1zZXJ2aWNlOjgwODAiLCJleHAiOjE3NzY3OTk1NjYsImlhdCI6MTc3Njc5NTk2NiwianRpIjoiNTZhZjM1NDMtZmM4Yy00Y2RiLWE0NjMtMmVmMjM1YzZjYTJlIiwiZW1haWwiOiJ2ZW5kZWRvckBnbWFpbC5jb20ifQ.uaGMaYDQ0LwIqmjJeAGaDVs5jw7oz1H3Q3CNtVLH9Brkq45Jjgsm2oLp99KM4NWaCf1P8h4ymXcefXyEsI7b1v8uNx3keH-34Jx4Fc10pjvIQcQ7dWzpuj-oLsqMpPH0NsdN71hZ6cpRQ4QIy-jvsIDqVRnKS8TUJlsESFTJXKSLGLiIKgjP-d3kGTj3YfGhdPtz6sLgaaLzu3QlYUQdgHi3LHIVGvD574VgMvjL80lnu033n6D7sdb7SRhIvv96rGMEVybqt7Sw44VPrKMfx98RCxhWu4fNpWunlFlED001bfMvHmp9bXiZrILVcawnrq_QiPYt_jecjCZGWLhbXw';
+const TOKEN = __ENV.TOKEN || 'eyJraWQiOiJhdXRoLXNlcnZpY2Uta2V5LXYxIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiIxIiwiYXVkIjoicG9zdG1hbi1jbGllbnQiLCJuYmYiOjE3Nzg4ODgwMjUsInNjb3BlIjpbIm9wZW5pZCIsInByb2ZpbGUiXSwicm9sZXMiOlsiVVNFUiIsIlNFTExFUiJdLCJpc3MiOiJodHRwOi8vYXV0aC1zZXJ2aWNlOjgwODEiLCJleHAiOjE3Nzg4OTE2MjUsImlhdCI6MTc3ODg4ODAyNSwianRpIjoiM2EyZDU5ZjktNTA5Yi00NTkxLWI3MTgtNjJjYzM3NWNiZTZlIiwiZW1haWwiOiJ2ZW5kZWRvckBnbWFpbC5jb20ifQ.PwoUndFVk_NhOTYrfYuJpFkzdIjMdVX6mGPFnYxHWyvvXsojZUG_hbJkcUxTRQ0rqxoIzxX80DGgRNXmFP9X-aFhkJAvWgoQv4AKYgfoYG2ohOI5QUvYZw64Kg8ok5O2-bJ6WbwZT1Sb-b-T4lnzbAZl1vMyuc3Sgmd2uDAZIjFjPgZSdUGWDASIobDL2fZ0A7tAHG0Pwv59wXjzFvw7s16uxPMkxigAyP6lTuzxg2FDPYp0kESIC94iUw7oZR3YXxftG6rYbrExEF9kkCb6BMTpt8tIcHvSfoI5ZesP5mMl5tIUCFD6voToT02KGi4v6grAYvp_Dbzk1Gx3HBGSfw';
 
 const SEARCH_TERMS = [
   'Heavy', 'Load', 'Producto', 'Test', 'stress',
@@ -44,7 +44,7 @@ function randomPrice()   { return (Math.random() * 999 + 1).toFixed(2); }
 function scenarioHomepage() {
   const limit = Math.random() > 0.5 ? 20 : 50;
   const res = http.get(
-    `http://localhost:8082/products/homepage?limit=${limit}`,
+    `http://localhost:8082/api/catalog/products/homepage?limit=${limit}`,
     { tags: { scenario: 'homepage' }, timeout: '10s' }
   );
   homepageDuration.add(res.timings.duration);
@@ -62,7 +62,7 @@ function scenarioSearch() {
   const maxPrice   = minPrice ? minPrice + Math.floor(Math.random() * 900) : null;
   const page       = Math.floor(Math.random() * 3);
 
-  let url = `http://localhost:8082/products/search?searchTerm=${term}&page=${page}&size=20`;
+  let url = `http://localhost:8082/api/catalog/products/search?searchTerm=${term}&size=20`;
   if (categoryId) url += `&categoryId=${categoryId}`;
   if (minPrice)   url += `&minPrice=${minPrice}`;
   if (maxPrice)   url += `&maxPrice=${maxPrice}`;
@@ -95,7 +95,7 @@ function scenarioCreate() {
     ),
     image: http.file(binFile, 'image.png', 'image/png'),
   };
-  const res = http.post('http://localhost:8082/products', payload, params);
+  const res = http.post('http://localhost:8082/api/catalog/products', payload, params);
   createDuration.add(res.timings.duration);
   const ok = check(res, {
     'Create status 200/201': (r) => r.status === 200 || r.status === 201,

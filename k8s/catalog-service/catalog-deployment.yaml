@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalog-service-pod
+  template:
+    metadata:
+      labels:
+        app: catalog-service-pod
+    spec:
+      containers:
+      - name: catalog-service
+        image: ecommerce-backend-microservices-platform-catalog-service:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8082
+        env:
+        - name: SPRING_DATA_MONGODB_URI
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: SPRING_DATA_MONGODB_URI
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: REDIS_PORT
+        - name: SPRING_DATA_REDIS_URI
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: SPRING_DATA_REDIS_URI
+        - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: SPRING_KAFKA_BOOTSTRAP_SERVERS
+        - name: SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI
+          valueFrom:
+            configMapKeyRef:
+              name: catalog-service-config
+              key: SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8082
+          failureThreshold: 30
+          periodSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8082
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8082
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "768Mi"
+            cpu: "500m"
+        volumeMounts:
+          - name: storage-volume
+            mountPath: /app/products/images
+      volumes:
+        - name: storage-volume
+          persistentVolumeClaim:
+            claimName: catalog-images-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-service
+spec:
+  selector:
+    app: catalog-service-pod
+  ports:
+    - port: 8082
+      targetPort: 8082
+  type: ClusterIP

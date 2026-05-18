@@ -8,6 +8,17 @@ public record SearchProductsQuery(
         Optional<String> categoryId,
         Optional<BigDecimal> minPrice,
         Optional<BigDecimal> maxPrice,
-        int page,
+        Optional<String> lastId,
         int size
-) {}
+) {
+    public String cacheKey() {
+        return String.join("|",
+                searchTerm.orElse(""),
+                categoryId.orElse(""),
+                minPrice.map(BigDecimal::toPlainString).orElse(""),
+                maxPrice.map(BigDecimal::toPlainString).orElse(""),
+                lastId.orElse(""),
+                String.valueOf(size)
+        );
+    }
+}

@@ -4,6 +4,7 @@ import com.ecommerce.crtdev.catalog_service.application.queries.GetHomepageProdu
 import com.ecommerce.crtdev.catalog_service.application.queries.ProductResponse;
 import com.ecommerce.crtdev.catalog_service.domain.model.Product;
 import com.ecommerce.crtdev.catalog_service.domain.ports.repository.IProductRepository;
+import org.springframework.cache.annotation.Cacheable;
 
 import java.util.List;
 
@@ -15,17 +16,11 @@ public class GetHomepageProductsHandler {
         this.repository = repository;
     }
 
+    @Cacheable(value = "homepage-products", key = "#query.limit()")
     public List<ProductResponse> execute(GetHomepageProductsQuery query) {
-        return repository.findLatestProducts(query.limit()).stream().map(this::mapToResponse).toList();
-    }
-
-    private ProductResponse mapToResponse(Product product) {
-        return new ProductResponse(
-                product.getId(),
-                product.getName(),
-                product.getDescription(),
-                product.getPrice(),
-                product.getImageUrl()
-        );
+        return repository.findLatestProducts(query.limit())
+                .stream()
+                .map( p -> new ProductResponse(p.getId(), p.getName(), p.getDescription(), p.getPrice(), p.getImageUrl()))
+                .toList();
     }
 }

@@ -24,13 +24,11 @@ public class DeleteProductHandler {
 
     public void execute(DeleteProductCommand command) {
 
-        productRepository.deleteById(command.productId());
-
         productCache.evictProduct(command.productId());
 
-        CloudEvent<ProductDeleted> event = buildEvent(command.productId());
+        productRepository.deleteById(command.productId());
 
-        eventPublisher.publishEvent(command.productId(), event);
+        eventPublisher.publishEvent(command.productId(), buildEvent(command.productId()));
     }
 
     private CloudEvent<ProductDeleted> buildEvent(String productId){

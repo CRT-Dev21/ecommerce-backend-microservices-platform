@@ -24,32 +24,34 @@ public class CreateProductHandler {
         this.productRepository = productRepository;
     }
 
-    public ProductResponse execute(CreateProductCommand command){
-
+    public ProductResponse execute(CreateProductCommand command) {
         String imageUrl = fileStorage.storeImage(command.image());
 
-        Product product = new Product(
-                command.sellerId(),
-                command.name(),
-                command.description(),
-                command.price(),
-                command.stock(),
-                command.categoryId(),
-                imageUrl
-        );
+        try {
+            Product product = new Product(
+                    command.sellerId(),
+                    command.name(),
+                    command.description(),
+                    command.price(),
+                    command.stock(),
+                    command.categoryId(),
+                    imageUrl
+            );
 
-        Product savedProduct = productRepository.save(product);
+            Product savedProduct = productRepository.save(product);
+            eventPublisher.publishEvent(savedProduct.getId(), buildEvent(savedProduct));
 
-        CloudEvent<ProductCreated> event = buildEvent(savedProduct);
+            return toResponse(savedProduct);
 
-        eventPublisher.publishEvent(savedProduct.getId(), event);
+        } catch (Exception e) {
+            fileStorage.deleteImage(imageUrl);
+            throw e;
+        }
+    }
 
-        return new ProductResponse(
-                savedProduct.getId(),
-                savedProduct.getName(),
-                savedProduct.getDescription(),
-                savedProduct.getPrice(),
-                savedProduct.getImageUrl());
+    private ProductResponse toResponse(Product p) {
+        return new ProductResponse(p.getId(), p.getName(),
+                p.getDescription(), p.getPrice(), p.getImageUrl());
     }
 
     private CloudEvent<ProductCreated> buildEvent(Product product){

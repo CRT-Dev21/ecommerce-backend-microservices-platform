@@ -1,22 +1,26 @@
 package com.ecommerce.crtdev.catalog_service.infrastructure.config;
 
-import com.mongodb.ConnectionString;
-import com.mongodb.MongoClientSettings;
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.mongodb.MongoDatabaseFactory;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.SimpleMongoClientDatabaseFactory;
 
 @Configuration
 public class MongoConfig {
 
-    @Bean
-    public MongoClient mongoClient() {
-        ConnectionString connectionString = new ConnectionString("mongodb://mongo:mongouser@catalog-db:27017/products_db?authSource=admin&maxPoolSize=100&minPoolSize=10&waitQueueTimeoutMS=5000");
-        MongoClientSettings mongoClientSettings = MongoClientSettings.builder()
-                .applyConnectionString(connectionString)
-                .build();
+    //"mongodb://mongo:mongouser@catalog-db:27017/products_db?authSource=admin&maxPoolSize=100&minPoolSize=10&waitQueueTimeoutMS=5000"
+    @Value("${mongodb.env.url}")
+    private String mongoUrl;
 
-        return MongoClients.create(mongoClientSettings);
+    @Bean
+    public MongoDatabaseFactory mongoDatabaseFactory() {
+        return new SimpleMongoClientDatabaseFactory(mongoUrl);
+    }
+
+    @Bean
+    public MongoTemplate mongoTemplate(MongoDatabaseFactory databaseFactory) {
+        return new MongoTemplate(databaseFactory);
     }
 }

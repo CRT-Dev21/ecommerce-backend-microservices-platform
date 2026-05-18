@@ -5,11 +5,12 @@ import com.ecommerce.crtdev.catalog_service.domain.model.Product;
 import com.ecommerce.crtdev.catalog_service.domain.ports.repository.IProductRepository;
 import com.ecommerce.crtdev.catalog_service.infrastructure.mappers.ProductEntitiesMapper;
 import com.ecommerce.crtdev.catalog_service.infrastructure.persistence.mongo.ProductDocument;
-import org.springframework.data.domain.PageRequest;
+import org.bson.types.ObjectId;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.TextCriteria;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -39,7 +40,7 @@ public class MongoProductRepository implements IProductRepository {
 
     @Override
     public void deleteById(String id) {
-        Query query = new Query(Criteria.where("id").is(id));
+        Query query = new Query(Criteria.where("_id").is(id));
         mongoTemplate.remove(query, ProductDocument.class);
     }
 
@@ -47,24 +48,38 @@ public class MongoProductRepository implements IProductRepository {
     public List<Product> search(SearchProductsQuery query) {
         Query mongoQuery = new Query();
 
-        query.searchTerm().ifPresent(term -> {
-            mongoQuery.addCriteria(new Criteria().orOperator(
-                    Criteria.where("name").regex(term, "i"),
-                    Criteria.where("description").regex(term, "i")
-            ));
-        });
+        query.searchTerm()
+                .filter(t -> !t.isBlank())
+                .ifPresent(term ->
+                        mongoQuery.addCriteria(
+                                TextCriteria.forDefaultLanguage().matchingPhrase(term)
+                        )
+                );
 
         query.categoryId().ifPresent(cat ->
                 mongoQuery.addCriteria(Criteria.where("categoryId").is(cat)));
 
         if (query.minPrice().isPresent() || query.maxPrice().isPresent()) {
-            Criteria priceCriteria = Criteria.where("price");
-            query.minPrice().ifPresent(priceCriteria::gte);
-            query.maxPrice().ifPresent(priceCriteria::lte);
-            mongoQuery.addCriteria(priceCriteria);
+            Criteria price = Criteria.where("price");
+            query.minPrice().ifPresent(price::gte);
+            query.maxPrice().ifPresent(price::lte);
+            mongoQuery.addCriteria(price);
         }
 
-        mongoQuery.with(PageRequest.of(query.page(), query.size()));
+        query.lastId().ifPresent(lastId ->
+                mongoQuery.addCriteria(Criteria.where("_id").gt(new ObjectId(lastId))));
+
+        mongoQuery.fields()
+                .include("name")
+                .include("price")
+                .include("categoryId")
+                .include("stock")
+                .include("imageUrl")
+                .include("sellerId");
+
+        mongoQuery
+                .with(Sort.by(Sort.Direction.ASC, "_id"))
+                .limit(query.size());
 
         return mongoTemplate.find(mongoQuery, ProductDocument.class)
                 .stream()
@@ -77,6 +92,12 @@ public class MongoProductRepository implements IProductRepository {
         Query query = new Query()
                 .with(Sort.by(Sort.Direction.DESC, "_id"))
                 .limit(limit);
+
+        query.fields()
+                .include("name")
+                .include("price")
+                .include("imageUrl")
+                .include("categoryId");
 
         return mongoTemplate.find(query, ProductDocument.class)
                 .stream()

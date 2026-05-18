@@ -12,7 +12,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/sellers")
+@RequestMapping("/api/sellers")
 public class SellerController {
 
     private final SellerService sellerService;

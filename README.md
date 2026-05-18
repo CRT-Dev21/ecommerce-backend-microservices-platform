@@ -1,6 +1,6 @@
 # AI-Powered eCommerce Backend — Production-Grade Microservices Platform
 
-A fully distributed eCommerce backend built from scratch with production-grade practices. This isn't a tutorial project, every architectural decision is intentional, documented, and justified. The goal was to build a system that degrades gracefully under load, recovers from failures automatically, scales horizontally when a single instance reaches its limit, and answers natural-language product queries using a RAG pipeline built on top of the existing event-driven infrastructure.
+A fully distributed eCommerce backend built from scratch with production-grade practices. This isn't a tutorial project, every architectural decision is intentional, documented, and justified. The system handles the full commerce lifecycle from product catalog to checkout, payment, and notifications, and includes an AI-powered search service that understands natural-language queries and responds based exclusively on real catalog data.
 
 ---
 
@@ -14,9 +14,9 @@ The system is organized into five layers:
 
 - **Services Layer** — Nine independent microservices, each owning its domain completely. No shared databases. No shared libraries.
 
-- **Middleware Layer** — Apache Kafka decouples asynchronous communication. Product lifecycle events trigger automatic re-indexing in the RAG pipeline.
-
 - **AI Layer** — Ollama runs the embedding model (`nomic-embed-text`) and the generative model (`llama3.2`) locally. In production, this layer could be replaced by Amazon Bedrock with zero changes to the RAG Service domain.
+
+- **Middleware Layer** — Apache Kafka decouples asynchronous communication. Product lifecycle events trigger automatic re-indexing in the RAG pipeline.
 
 - **Data Layer** — Each service owns its persistence technology. MongoDB for the product catalog (flexible document model), PostgreSQL for transactional services (ACID guarantees), Redis for session-like data (cart, rate limiting), Qdrant as the vector store for semantic search.
 
@@ -57,7 +57,7 @@ The response includes both the generated answer and the source products used as 
 
 ### Why retrieval quality matters more than the LLM
 
-The LLM can only reason about what the retrieval step gives it. If Qdrant returns irrelevant products, the LLM cannot compensate, it simply never sees the correct ones. The system prompt explicitly instructs the model not to invent products or prices and to state clearly when no relevant product exists in the catalog. This is what prevents hallucination in a RAG system: constraining the generation to the retrieved context, not relying on the model's parametric knowledge.
+The LLM can only reason about what the retrieval step gives it. If Qdrant returns irrelevant products, the LLM cannot compensate — it simply never sees the correct ones. The system prompt explicitly instructs the model not to invent products or prices and to state clearly when no relevant product exists in the catalog. This is what prevents hallucination in a RAG system: constraining the generation to the retrieved context, not relying on the model's parametric knowledge.
 
 ### Hexagonal Architecture applied to RAG
 
@@ -68,6 +68,103 @@ The LLM can only reason about what the retrieval step gives it. If Qdrant return
 | `VectorStorePort` | `QdrantVectorStoreAdapter` | `OpenSearchVectorStoreAdapter` |
 
 Switching from the local stack to AWS Bedrock + OpenSearch Serverless requires adding new adapter classes. Zero domain changes. Zero use case changes.
+
+---
+
+## Kubernetes Deployment
+
+The entire platform is deployable to Kubernetes. Every service has a complete set of manifests covering deployment, networking, configuration, storage, and autoscaling.
+
+### Manifest structure
+
+```
+k8s/
+├── ingress.yaml
+├── api-gateway/
+│   ├── gateway-deployment.yaml
+│   └── gateway-configmap.yaml
+├── auth-service/
+│   ├── auth-deployment.yaml
+│   ├── auth-configmap.yaml
+│   ├── auth-hpa.yaml
+│   └── auth-rsa-secret.yaml
+├── catalog-service/
+│   ├── catalog-deployment.yaml
+│   ├── catalog-configmap.yaml
+│   ├── catalog-pvc.yaml
+│   └── catalog-hpa.yaml
+└── ... (one folder per service)
+```
+
+### What each manifest covers
+
+**Deployment** — Defines the container image, environment variables sourced from ConfigMaps and Secrets, resource limits (CPU and memory), and health checks via Spring Boot Actuator:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /actuator/health/liveness
+    port: 8080
+  timeoutSeconds: 5
+  periodSeconds: 15
+  failureThreshold: 5
+readinessProbe:
+  httpGet:
+    path: /actuator/health/readiness
+    port: 8080
+  timeoutSeconds: 5
+  failureThreshold: 3
+```
+
+The distinction between liveness and readiness is intentional. Liveness tells Kubernetes when to restart a pod. Readiness tells Kubernetes when the pod is ready to receive traffic. Without this separation, the Gateway would route requests to pods still initializing.
+
+**Service**: Provides a stable DNS name and IP for each Deployment. Pods are ephemeral and their IPs change on every restart. The Service is what makes `http://catalog-service:8082` a reliable address regardless of which pod instance is currently running.
+
+**ConfigMap and Secret**: All environment-specific configuration is externalized. Non-sensitive values (hostnames, ports, feature flags) live in ConfigMaps. Sensitive values (database passwords, JWT secrets) live in Secrets. No configuration is hardcoded in the image.
+
+**PersistentVolumeClaim**: Applied to the Catalog Service for product image storage. Pods are stateless by design so a PVC ensures uploaded images survive pod restarts and rescheduling.
+
+**HorizontalPodAutoscaler**: Applied to the Catalog Service, which handles the highest read traffic in the system:
+
+```yaml
+minReplicas: 3
+maxReplicas: 5
+metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+```
+
+At 70% CPU utilization across the existing pods, Kubernetes automatically schedules additional replicas up to the defined maximum. The load test results (1,261 req/s on a single instance) establish the baseline, with HPA the service scales horizontally before latency degrades.
+
+**Ingress**: Exposes the API Gateway to external traffic with path-based routing. All external requests enter through a single entry point so internal service-to-service communication stays within the cluster network.
+
+### Running on Kubernetes (minikube)
+
+```bash
+# Start minikube with enough resources
+minikube start --cpus=4 --memory=8192
+
+# Enable ingress controller
+minikube addons enable ingress
+
+# Apply infrastructure (Kafka, databases)
+kubectl apply -f k8s/kafka/
+kubectl apply -f k8s/SERVICE/SERVICE-db.yaml
+
+# Apply services
+kubectl apply -f k8s/auth-service/
+kubectl apply -f k8s/catalog-service/
+# ... remaining services
+
+# Verify all pods are running
+kubectl get pods
+```
+
+---
 
 ## Architectural & Design Patterns
 
@@ -103,9 +200,9 @@ Domain-Driven Design guided the service boundaries in this system. The key insig
 This separation also made independent technical decisions possible: Catalog uses virtual threads with Redis (optimized for high-concurrency reads). Inventory is imperative with PostgreSQL and optimistic locking (optimized for consistent concurrent writes). A single merged service could not have made both decisions.
 
 ### Circuit Breaker + Retry (Resilience4j)
-Applied to the **Order → Inventory** synchronous call. The call is the only synchronous dependency in the entire checkout flow, it exists because stock reservation must be synchronous (you cannot tell 1,000 users their order was accepted and then fail 900 of them asynchronously).
+Applied to the **Order → Inventory** synchronous call. The call is the only synchronous dependency in the entire checkout flow — it exists because stock reservation must be synchronous (you cannot tell 1,000 users their order was accepted and then fail 900 of them asynchronously).
 
-Is that how MercadoLibre or Amazon does it? No. At their scale, an async approach with eventual consistency makes sense, they have dedicated infrastructure to handle overselling, complex compensation flows, and the operational maturity to manage the trade-offs that come with it. At that scale, the cost of a synchronous dependency outweighs the cost of managing phantom orders.
+Is that how MercadoLibre or Amazon does it? No. At their scale, an async approach with eventual consistency makes sense — they have dedicated infrastructure to handle overselling, complex compensation flows, and the operational maturity to manage the trade-offs that come with it. At that scale, the cost of a synchronous dependency outweighs the cost of managing phantom orders.
 
 But in this project there is no dedicated oversell management layer. Here, the synchronous call is the simpler and safer choice, and simpler is often the right engineering decision when you don't have the scale that justifies the complexity.
 
@@ -113,12 +210,12 @@ Resilience4j wraps this call with:
 - **Retry**: 2 attempts with exponential backoff (300ms, 600ms)
 - **Circuit Breaker**: opens after 50% failure rate over 10 calls, stays open for 30 seconds
 
-Business exceptions (`InsufficientStockException`, `ProductNotFoundException`) are explicitly excluded from retry logic, retrying a business rule is pointless.
+Business exceptions (`InsufficientStockException`, `ProductNotFoundException`) are explicitly excluded from retry logic — retrying a business rule is pointless.
 
 ### OAuth2 Client Credentials (Service-to-Service Security)
 Internal service calls are authenticated using OAuth2 Client Credentials flow. **Order Service** is a registered OAuth2 client with `scope: inventory:reserve`. **Payment Service** has `scope: seller:bankInfo`. Each service obtains a short-lived token (5 minutes) from the Auth Service and presents it on every internal request. **No hardcoded secrets. No shared API keys. No trust-by-network.**
 
-Each microservice validates tokens independently, security is not centralized in the Gateway. This follows the Defense in Depth principle: if the Gateway is compromised or bypassed, every service still enforces its own authorization rules.
+Each microservice validates tokens independently — security is not centralized in the Gateway. This follows the Defense in Depth principle: if the Gateway is compromised or bypassed, every service still enforces its own authorization rules.
 
 ### Card Tokenization
 Card data never enters the backend system. The frontend tokenizes the card number with the Payment Service before the checkout flow begins. What flows through Order Service and the Saga is an opaque token string. No PCI scope. No card numbers in any database, log, or event.
@@ -131,7 +228,7 @@ This means a producer can evolve its event schema forward (adding optional field
 This is the pattern that makes truly independent deployments possible in an event-driven system. Without it, every schema change becomes a coordinated multi-service deployment, which defeats the purpose of having independent services in the first place.
 
 ### Multi-Seller Order Splitting
-A single checkout request containing products from multiple sellers is automatically split into independent orders, one per seller, each with its own lifecycle, payment, and Saga. This is how MercadoLibre works. If seller A's stock fails, seller B's order still proceeds. The `checkoutId` groups all resulting orders for the user's view.
+A single checkout request containing products from multiple sellers is automatically split into independent orders — one per seller, each with its own lifecycle, payment, and Saga. This is how MercadoLibre works. If seller A's stock fails, seller B's order still proceeds. The `checkoutId` groups all resulting orders for the user's view.
 
 ![Saga Diagram](docs/order-splitting.png)
 
@@ -148,7 +245,7 @@ A single checkout request containing products from multiple sellers is automatic
 The Catalog Service was benchmarked twice under identical conditions to evaluate the impact of switching from a reactive stack (WebFlux + Reactor) to an imperative stack with virtual threads (Spring Boot 4 + Java 21). Same hexagonal architecture, same endpoints, same traffic distribution:
 
 - 70% homepage reads (Redis cache)
-- 20% product creation (multipart upload -> MongoDB -> Kafka)
+- 20% product creation (multipart upload → MongoDB → Kafka)
 - 10% search with filters (MongoDB)
 
 ### Normal load — 200 VUs, 5 minutes (reactive baseline)
@@ -176,7 +273,7 @@ Two identical services, two different threading models:
 | Error rate | 0.000% | 0.000% | equal |
 | Products created | 60,782 | 151,515 | **+149%** |
 
-**What the breaking point revealed:** At 800 VUs, the catalog-service CPU hit 106% of its single allocated core. Redis was at 0.26%. MongoDB at 12.82%. Kafka stable. The bottleneck was exclusively the CPU, the Netty event loop was saturated processing concurrent multipart uploads, which delayed even cached responses.
+**What the breaking point revealed:** At 800 VUs, the catalog-service CPU hit 106% of its single allocated core. Redis was at 0.26%. MongoDB at 12.82%. Kafka stable. The bottleneck was exclusively the CPU — the Netty event loop was saturated processing concurrent multipart uploads, which delayed even cached responses.
 
 The service never crashed. It degraded gracefully and accepted every request.
 
@@ -218,7 +315,7 @@ GMAIL_USERNAME=your-email@gmail.com
 GMAIL_APP_PASSWORD=your-16-char-app-password
 ```
 
-Gmail App Password: Google Account -> Security -> 2-Step Verification -> App Passwords.
+Gmail App Password: Google Account → Security → 2-Step Verification → App Passwords.
 
 ### 3. Start all services
 ```bash
@@ -292,7 +389,7 @@ Products are indexed automatically via Kafka — no manual step required.
 
 **Load Testing:** k6
 
-**Containerization:** Docker, Docker Compose
+**Containerization:** Docker, Docker Compose, Kubernetes (minikube)
 
 **Observability:** Kafka UI, Qdrant Dashboard, structured logging with correlation IDs
 

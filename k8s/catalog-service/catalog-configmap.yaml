@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalog-service-config
+data:
+  SPRING_DATA_MONGODB_URI: "mongodb://products_user:products_pass@mongodb-service:27017/products_db?authSource=products_db"
+  REDIS_HOST: "catalog-redis"
+  REDIS_PORT: "6379"
+  SPRING_DATA_REDIS_URI: "catalog-redis://catalog-redis:6379"
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: "http://auth-service:8081/oauth2/jwks"

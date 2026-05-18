@@ -29,7 +29,6 @@ public class UpdateProductHandler {
         this.eventPublisher = eventPublisher;
     }
 
-    @Transactional
     public ProductResponse execute(UpdateProductCommand command) {
         Product product = productRepository.findById(command.productId())
                 .orElseThrow(() -> new ProductNotFoundException(command.productId()));
@@ -39,28 +38,38 @@ public class UpdateProductHandler {
                 .isPresent();
 
         String oldImageUrl = product.getImageUrl();
-        handleImageUpdate(product, command);
+        String newImageUrl = null;
+
+        if (command.image().isPresent()) {
+            newImageUrl = fileStorage.storeImage(command.image().get());
+            product.setImageUrl(newImageUrl);
+        }
 
         command.name().ifPresent(product::setName);
         command.description().ifPresent(product::setDescription);
         command.price().ifPresent(product::setPrice);
         command.stock().ifPresent(product::setStock);
 
-        Product savedProduct = productRepository.save(product);
+        Product savedProduct;
+        try {
+            savedProduct = productRepository.save(product);
+        } catch (Exception e) {
+            if (newImageUrl != null) fileStorage.deleteImage(newImageUrl);
+            throw e;
+        }
+
+        productCache.evictProduct(savedProduct.getId());
 
         if (priceChanged) {
             eventPublisher.publishEvent(savedProduct.getId(), buildEvent(savedProduct));
         }
 
-        productCache.evictProduct(savedProduct.getId());
+        if (newImageUrl != null) {
+            fileStorage.deleteImage(oldImageUrl);
+        }
 
-        command.image().ifPresent(img -> fileStorage.deleteImage(oldImageUrl));
-
-        return new ProductResponse(
-                savedProduct.getId(),
-                savedProduct.getName(),
-                savedProduct.getDescription(),
-                savedProduct.getPrice(),
+        return new ProductResponse(savedProduct.getId(), savedProduct.getName(),
+                savedProduct.getDescription(), savedProduct.getPrice(),
                 savedProduct.getImageUrl());
     }
 

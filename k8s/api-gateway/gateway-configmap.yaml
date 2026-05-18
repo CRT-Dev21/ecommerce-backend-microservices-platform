@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-config
+data:
+  AUTH_SERVICE_JWKS_URI: "http://auth-service:8081/oauth2/jwks"
+  AUTH_SERVICE_URI: "http://auth-service:8081"
+  CATALOG_SERVICE_URI: "http://catalog-service:8082"
+  SELLER_SERVICE_URI: "http://seller-service:8083"
+  PAYMENT_SERVICE_URI: "http://payment-service:8084"
+  ORDER_SERVICE_URI: "http://order-service:8085"
+  INVENTORY_SERVICE_URI: "http://inventory-service:8086"
+  CART_SERVICE_URI: "http://cart-service:8087"
+  RAG_SERVICE_URI: "http://rag-service:8089"
+  REDIS_HOST: "gateway-redis"
+  REDIS_PORT: "6379"

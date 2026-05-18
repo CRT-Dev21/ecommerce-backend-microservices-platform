@@ -47,13 +47,14 @@ public class SecurityConfig {
                 .cors(cors->cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.GET, "/products/homepage").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/products/search").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/products/{id}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/catalog/products/homepage").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/catalog/products/search").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/catalog/products/{id}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/**").permitAll()
 
-                        .requestMatchers(HttpMethod.POST, "/products").hasRole("SELLER")
-                        .requestMatchers(HttpMethod.PUT, "/products/**").hasRole("SELLER")
-                        .requestMatchers(HttpMethod.DELETE, "/products/**").hasRole("SELLER")
+                        .requestMatchers(HttpMethod.POST, "/api/catalog/products").hasRole("SELLER")
+                        .requestMatchers(HttpMethod.PUT, "/api/catalog/products/**").hasRole("SELLER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/catalog/products/**").hasRole("SELLER")
 
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 ->oauth2.jwt(Customizer.withDefaults()))
