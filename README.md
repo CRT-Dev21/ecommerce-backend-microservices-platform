@@ -41,7 +41,7 @@ The system is organized into five layers:
 
 ## RAG Service — AI-Powered Product Search
 
-The RAG Service adds natural-language search to the platform. A user can ask *"I need something portable for listening to music at the gym"* and receive a grounded answer based exclusively on real products in the catalog — no hallucinated products, no invented prices.
+The RAG Service adds natural-language search to the platform. A user can ask *"I need something portable for listening to music at the gym"* and receive a grounded answer based exclusively on real products in the catalog; no hallucinated products, no invented prices.
 
 ### How it works
 
@@ -57,7 +57,7 @@ The response includes both the generated answer and the source products used as 
 
 ### Why retrieval quality matters more than the LLM
 
-The LLM can only reason about what the retrieval step gives it. If Qdrant returns irrelevant products, the LLM cannot compensate — it simply never sees the correct ones. The system prompt explicitly instructs the model not to invent products or prices and to state clearly when no relevant product exists in the catalog. This is what prevents hallucination in a RAG system: constraining the generation to the retrieved context, not relying on the model's parametric knowledge.
+The LLM can only reason about what the retrieval step gives it. If Qdrant returns irrelevant products, the LLM cannot compensate, it simply never sees the correct ones. The system prompt explicitly instructs the model not to invent products or prices and to state clearly when no relevant product exists in the catalog. This is what prevents hallucination in a RAG system: constraining the generation to the retrieved context, not relying on the model's parametric knowledge.
 
 ### Hexagonal Architecture applied to RAG
 
@@ -98,7 +98,7 @@ k8s/
 
 ### What each manifest covers
 
-**Deployment** — Defines the container image, environment variables sourced from ConfigMaps and Secrets, resource limits (CPU and memory), and health checks via Spring Boot Actuator:
+**Deployment**: Defines the container image, environment variables sourced from ConfigMaps and Secrets, resource limits (CPU and memory), and health checks via Spring Boot Actuator:
 
 ```yaml
 livenessProbe:
@@ -174,21 +174,21 @@ Every pattern in this project was chosen deliberately. Here's what was applied a
 Applied to **Catalog Service** and **RAG Service**. The domain logic has zero knowledge of MongoDB, Redis, Kafka, Ollama, or Qdrant. It only knows about interfaces (ports). MongoDB, Redis, Kafka, Ollama, and Qdrant are adapters that implement those interfaces. Switching them for some Amazon Service like Amazon Bedrock or S3 requires adding one adapter class. Zero domain changes.
 
 ### Saga Pattern (Choreography)
-Applied to the **Order → Payment → Inventory → Notification** flow. A distributed transaction spans four services and cannot be wrapped in a single ACID transaction. The Saga ensures consistency through compensation: if payment fails, stock is automatically reversed and the buyer is notified. Every Saga step publishes an event that the next participant consumes. Every compensation action is the inverse of the forward step.
+Applied to the **Order -> Payment -> Inventory -> Notification** flow. A distributed transaction spans four services and cannot be wrapped in a single ACID transaction. The Saga ensures consistency through compensation: if payment fails, stock is automatically reversed and the buyer is notified. Every Saga step publishes an event that the next participant consumes. Every compensation action is the inverse of the forward step.
 
 ### Idempotent Consumers
 Every service that has important tasks related to events checks a `processed_events` table before processing. If the `eventId` already exists, the message is silently skipped. This makes every consumer idempotent — reprocessing the same event any number of times produces the same result. This is critical for a system where Kafka may deliver messages more than once and the processes within it are critical.
 
 ### Event Sourcing Metadata (Correlation & Causation)
 Every event part of the Saga carries:
-- `correlationId` — the `orderId`, shared across all events of the same Saga
-- `causationId` — the `eventId` of the event that caused this one
-- `checkoutId` — groups all orders from the same checkout session
+- `correlationId` - the `orderId`, shared across all events of the same Saga
+- `causationId` - the `eventId` of the event that caused this one
+- `checkoutId` - groups all orders from the same checkout session
 
 This makes the entire distributed transaction traceable across services without a centralized tracing system.
 
 ### Read Model / Local Cache Pattern
-**Order Service** maintains its own `product_catalog_snapshot` table, fed by Catalog events (`ProductCreated`, `ProductDeleted`, `ProductPriceChanged`). When a user checks out, prices are validated locally — no synchronous call to Catalog at the most critical moment in the system. This is eventual consistency as a deliberate trade-off: a slightly stale price snapshot is far less dangerous than a synchronous dependency that can fail mid-checkout.
+**Order Service** maintains its own `product_catalog_snapshot` table, fed by Catalog events (`ProductCreated`, `ProductDeleted`, `ProductPriceChanged`). When a user checks out, prices are validated locally, no synchronous call to Catalog at the most critical moment in the system. This is eventual consistency as a deliberate trade-off: a slightly stale price snapshot is far less dangerous than a synchronous dependency that can fail mid-checkout.
 
 ### Bounded Contexts via DDD
 Domain-Driven Design guided the service boundaries in this system. The key insight is that the same real-world concept can belong to different bounded contexts, and forcing them into a single service creates the God Service anti-pattern.
@@ -200,9 +200,9 @@ Domain-Driven Design guided the service boundaries in this system. The key insig
 This separation also made independent technical decisions possible: Catalog uses virtual threads with Redis (optimized for high-concurrency reads). Inventory is imperative with PostgreSQL and optimistic locking (optimized for consistent concurrent writes). A single merged service could not have made both decisions.
 
 ### Circuit Breaker + Retry (Resilience4j)
-Applied to the **Order → Inventory** synchronous call. The call is the only synchronous dependency in the entire checkout flow — it exists because stock reservation must be synchronous (you cannot tell 1,000 users their order was accepted and then fail 900 of them asynchronously).
+Applied to the **Order -> Inventory** synchronous call. The call is the only synchronous dependency in the entire checkout flow. It exists because stock reservation must be synchronous (you cannot tell 1,000 users their order was accepted and then fail 900 of them asynchronously).
 
-Is that how MercadoLibre or Amazon does it? No. At their scale, an async approach with eventual consistency makes sense — they have dedicated infrastructure to handle overselling, complex compensation flows, and the operational maturity to manage the trade-offs that come with it. At that scale, the cost of a synchronous dependency outweighs the cost of managing phantom orders.
+Is that how MercadoLibre or Amazon does it? No. At their scale, an async approach with eventual consistency makes sense, they have dedicated infrastructure to handle overselling, complex compensation flows, and the operational maturity to manage the trade-offs that come with it. At that scale, the cost of a synchronous dependency outweighs the cost of managing phantom orders.
 
 But in this project there is no dedicated oversell management layer. Here, the synchronous call is the simpler and safer choice, and simpler is often the right engineering decision when you don't have the scale that justifies the complexity.
 
@@ -215,13 +215,13 @@ Business exceptions (`InsufficientStockException`, `ProductNotFoundException`) a
 ### OAuth2 Client Credentials (Service-to-Service Security)
 Internal service calls are authenticated using OAuth2 Client Credentials flow. **Order Service** is a registered OAuth2 client with `scope: inventory:reserve`. **Payment Service** has `scope: seller:bankInfo`. Each service obtains a short-lived token (5 minutes) from the Auth Service and presents it on every internal request. **No hardcoded secrets. No shared API keys. No trust-by-network.**
 
-Each microservice validates tokens independently — security is not centralized in the Gateway. This follows the Defense in Depth principle: if the Gateway is compromised or bypassed, every service still enforces its own authorization rules.
+Each microservice validates tokens independently, security is not centralized in the Gateway. This follows the Defense in Depth principle: if the Gateway is compromised or bypassed, every service still enforces its own authorization rules.
 
 ### Card Tokenization
 Card data never enters the backend system. The frontend tokenizes the card number with the Payment Service before the checkout flow begins. What flows through Order Service and the Saga is an opaque token string. No PCI scope. No card numbers in any database, log, or event.
 
 ### Tolerant Consumer
-Every Kafka consumer in this system is deliberately tolerant of schema evolution. All consumers are configured with `FAIL_ON_UNKNOWN_PROPERTIES = false` — if a producer adds new fields to an event, consumers that don't need those fields simply ignore them and continue processing normally. No consumer breaks. No deployment coordination required.
+Every Kafka consumer in this system is deliberately tolerant of schema evolution. All consumers are configured with `FAIL_ON_UNKNOWN_PROPERTIES = false`, if a producer adds new fields to an event, consumers that don't need those fields simply ignore them and continue processing normally. No consumer breaks. No deployment coordination required.
 
 This means a producer can evolve its event schema forward (adding optional fields) without any consumer needing to be updated or redeployed simultaneously. The only contract that matters is: don't remove fields that consumers depend on, and don't change their meaning. Everything else is free to change independently.
 
@@ -273,11 +273,11 @@ Two identical services, two different threading models:
 | Error rate | 0.000% | 0.000% | equal |
 | Products created | 60,782 | 151,515 | **+149%** |
 
-**What the breaking point revealed:** At 800 VUs, the catalog-service CPU hit 106% of its single allocated core. Redis was at 0.26%. MongoDB at 12.82%. Kafka stable. The bottleneck was exclusively the CPU — the Netty event loop was saturated processing concurrent multipart uploads, which delayed even cached responses.
+**What the breaking point revealed:** At 800 VUs, the catalog-service CPU hit 106% of its single allocated core. Redis was at 0.26%. MongoDB at 12.82%. Kafka stable. The bottleneck was exclusively the CPU, the Netty event loop was saturated processing concurrent multipart uploads, which delayed even cached responses.
 
 The service never crashed. It degraded gracefully and accepted every request.
 
-**Why virtual threads won:** The reactive version wasn't slow because WebFlux is bad. It was slow because the overhead of the reactive model stopped paying for itself. Every request passed through Reactor's operator chain — flatMap, context propagation, scheduler switching — machinery that exists to maximize throughput when I/O latency is high and unpredictable. When your dependencies respond in single-digit milliseconds, you pay the cost of a non-blocking pipeline without getting the benefit.
+**Why virtual threads won:** The reactive version wasn't slow because WebFlux is bad. It was slow because the overhead of the reactive model stopped paying for itself. Every request passed through Reactor's operator chain (flatMap, context propagation, scheduler switching) machinery that exists to maximize throughput when I/O latency is high and unpredictable. When your dependencies respond in single-digit milliseconds, you pay the cost of a non-blocking pipeline without getting the benefit.
 
 Virtual threads flip the economics. When a virtual thread blocks waiting for Redis, MongoDB, or a Kafka ack, the underlying OS thread is immediately freed and picks up another request. No operator chains. No scheduler overhead. No backpressure management. The JVM handles the concurrency, and the code stays readable.
 
@@ -315,7 +315,7 @@ GMAIL_USERNAME=your-email@gmail.com
 GMAIL_APP_PASSWORD=your-16-char-app-password
 ```
 
-Gmail App Password: Google Account → Security → 2-Step Verification → App Passwords.
+Gmail App Password: Google Account -> Security -> 2-Step Verification -> App Passwords.
 
 ### 3. Start all services
 ```bash
@@ -352,8 +352,6 @@ curl -X POST http://localhost:8089/ai/search \
   -H "Content-Type: application/json" \
   -d '{"query": "I need a powerful computer for gaming"}'
 ```
-
-Products are indexed automatically via Kafka — no manual step required.
 
 ---
 
