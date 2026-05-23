@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seller-service-deployment
+  namespace: ecommerce
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seller-service-pod
+  template:
+    metadata:
+      labels:
+        app: seller-service-pod
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/actuator/prometheus"
+        prometheus.io/port: "8083"
+    spec:
+      initContainers:
+        - name: download-otel-agent
+          image: curlimages/curl:latest
+          command:
+            - curl
+            - -L
+            - -o
+            - /shared/opentelemetry-javaagent.jar
+            - https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
+          volumeMounts:
+            - name: otel-agent-volume
+              mountPath: /shared
+
+      containers:
+        - name: seller-service
+          image: ecommerce-backend-microservices-platform-seller-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8083
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: seller-service-config
+                  key: SPRING_DATASOURCE_URL
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: seller-db-secrets
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: seller-db-secrets
+                  key: password
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: seller-service-config
+                  key: SPRING_KAFKA_BOOTSTRAP_SERVERS
+            - name: AUTH_SERVICE_JWKS_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: seller-service-config
+                  key: AUTH_SERVICE_JWKS_URI
+            - name: JAVA_TOOL_OPTIONS
+              value: "-javaagent:/shared/opentelemetry-javaagent.jar"
+            - name: OTEL_SERVICE_NAME
+              value: "seller-service"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tempo.observability.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8083
+            initialDelaySeconds: 15
+            failureThreshold: 20
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8083
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8083
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+
+          volumeMounts:
+            - name: otel-agent-volume
+              mountPath: /shared
+
+      volumes:
+        - name: otel-agent-volume
+          emptyDir: {}
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: seller-service
+  namespace: ecommerce
+spec:
+  selector:
+    app: seller-service-pod
+  ports:
+    - port: 8083
+      targetPort: 8083
+  type: ClusterIP

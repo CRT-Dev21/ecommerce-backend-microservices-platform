@@ -34,7 +34,8 @@ public class SecurityConfig {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.GET, "/sellers/{sellerId}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/sellers/{sellerId}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2

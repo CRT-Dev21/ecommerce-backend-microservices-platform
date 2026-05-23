@@ -2,7 +2,11 @@
   <dictionary name="project">
     <words>
       <w>crtdev</w>
+      <w>curlimages</w>
       <w>healthcheck</w>
+      <w>jwks</w>
+      <w>opentelemetry</w>
+      <w>otel</w>
       <w>postgreuser</w>
       <w>qdrant</w>
       <w>resourceserver</w>

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-service-config
+  namespace: ecommerce
+data:
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://inventory-db:5432/inventory_db"
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  AUTH_SERVICE_JWKS_URI: "http://auth-service:8081/oauth2/jwks"

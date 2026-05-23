@@ -38,8 +38,6 @@ public class OrderEventConsumer {
     @KafkaListener(
             topics = "orders.events",
             groupId = "payment-group",
-            // DLQ configurado en KafkaConfig — mensajes que fallen
-            // después de los reintentos van a orders.events.payment.group.dlq
             containerFactory = "kafkaListenerContainerFactory"
     )
     public void onOrderEvent(
@@ -88,8 +86,6 @@ public class OrderEventConsumer {
         } catch (Exception e) {
             log.error("Failed to process order event topic={} offset={} message={}",
                     topic, offset, message, e);
-            // Relanzar para que el DefaultErrorHandler con backoff reintente
-            // Después de los reintentos el mensaje va al DLQ
             throw new RuntimeException("Order event processing failed", e);
         }
     }

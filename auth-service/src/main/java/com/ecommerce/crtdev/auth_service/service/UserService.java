@@ -21,7 +21,7 @@ public class UserService {
         this.userRepository = userRepository;
     }
 
-    public void registerUser(UserRegisterRequest userRegister){
+    public User registerUser(UserRegisterRequest userRegister){
         if(userRepository.existsByEmail(userRegister.email())){
             throw new EmailAlreadyExistsException("This email is already registered","AUTH_EMAIL_DUPLICATED", HttpStatus.CONFLICT);
         }
@@ -29,6 +29,6 @@ public class UserService {
                 userRegister.email(),
                 encoder.encode(userRegister.password()), Set.of(Role.USER));
 
-        userRepository.save(user);
+        return userRepository.save(user);
     }
 }

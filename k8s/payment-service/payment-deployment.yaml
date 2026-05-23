@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service-deployment
+  namespace: ecommerce
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service-pod
+  template:
+    metadata:
+      labels:
+        app: payment-service-pod
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/actuator/prometheus"
+        prometheus.io/port: "8084"
+    spec:
+      initContainers:
+        - name: download-otel-agent
+          image: curlimages/curl:latest
+          command:
+            - curl
+            - -L
+            - -o
+            - /shared/opentelemetry-javaagent.jar
+            - https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
+          volumeMounts:
+            - name: otel-agent-volume
+              mountPath: /shared
+
+      containers:
+        - name: payment-service
+          image: ecommerce-backend-microservices-platform-payment-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8084
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: payment-service-config
+                  key: SPRING_DATASOURCE_URL
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: payment-db-secrets
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: payment-db-secrets
+                  key: password
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: payment-service-config
+                  key: SPRING_KAFKA_BOOTSTRAP_SERVERS
+            - name: AUTH_SERVICE_JWKS_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: payment-service-config
+                  key: AUTH_SERVICE_JWKS_URI
+            - name: AUTH_SERVICE_TOKEN_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: payment-service-config
+                  key: AUTH_SERVICE_TOKEN_URI
+            - name: SELLER_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: payment-service-config
+                  key: SELLER_SERVICE_URL
+            - name: JAVA_TOOL_OPTIONS
+              value: "-javaagent:/shared/opentelemetry-javaagent.jar"
+            - name: OTEL_SERVICE_NAME
+              value: "payment-service"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tempo.observability.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8084
+            initialDelaySeconds: 15
+            failureThreshold: 20
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8084
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8084
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+
+          volumeMounts:
+            - name: otel-agent-volume
+              mountPath: /shared
+
+      volumes:
+        - name: otel-agent-volume
+          emptyDir: {}
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: ecommerce
+spec:
+  selector:
+    app: payment-service-pod
+  ports:
+    - port: 8084
+      targetPort: 8084
+  type: ClusterIP

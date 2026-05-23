@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service-deployment
+  namespace: ecommerce
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service-pod
+  template:
+    metadata:
+      labels:
+        app: notification-service-pod
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/actuator/prometheus"
+        prometheus.io/port: "8088"
+    spec:
+      initContainers:
+        - name: download-otel-agent
+          image: curlimages/curl:latest
+          command:
+            - curl
+            - -L
+            - -o
+            - /shared/opentelemetry-javaagent.jar
+            - https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
+          volumeMounts:
+            - name: otel-agent-volume
+              mountPath: /shared
+
+      containers:
+        - name: notification-service
+          image: ecommerce-backend-microservices-platform-notification-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8088
+          env:
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: notification-service-config
+                  key: SPRING_KAFKA_BOOTSTRAP_SERVERS
+            - name: GMAIL_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: notification-service-config
+                  key: GMAIL_USERNAME
+            - name: GMAIL_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: notification-mail-secrets
+                  key: GMAIL_APP_PASSWORD
+            - name: JAVA_TOOL_OPTIONS
+              value: "-javaagent:/shared/opentelemetry-javaagent.jar"
+            - name: OTEL_SERVICE_NAME
+              value: "notification-service"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tempo.observability.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8088
+            initialDelaySeconds: 15
+            failureThreshold: 20
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8088
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8088
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+
+          volumeMounts:
+            - name: otel-agent-volume
+              mountPath: /shared
+
+      volumes:
+        - name: otel-agent-volume
+          emptyDir: {}
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: ecommerce
+spec:
+  selector:
+    app: notification-service-pod
+  ports:
+    - port: 8088
+      targetPort: 8088
+  type: ClusterIP

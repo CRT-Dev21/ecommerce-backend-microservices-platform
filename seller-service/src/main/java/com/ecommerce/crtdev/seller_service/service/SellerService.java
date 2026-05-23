@@ -90,19 +90,19 @@ public class SellerService {
     }
 
     @Transactional(readOnly = true)
-    public SellerResponses.BankInfoResponse getBankInfo(Long sellerId) {
-        Seller seller = sellerRepository.findByIdWithBankAccount(sellerId)
-                .orElseThrow(() -> new SellerNotFoundException(sellerId));
+    public SellerResponses.BankInfoResponse getBankInfo(Long userId) {
+        Seller seller = sellerRepository.findByUserIdWithBankAccount(userId)
+                .orElseThrow(() -> new SellerNotFoundException(userId));
 
         if (seller.getBankAccount() == null) {
-            throw new BankAccountNotFoundException(sellerId);
+            throw new BankAccountNotFoundException(seller.getId());
         }
 
         return SellerResponses.BankInfoResponse.from(seller.getId(), seller.getBankAccount());
     }
 
     public SellerResponses.SellerInfoResponse getSellerInfo(Long sellerId) {
-        Seller seller = sellerRepository.findById(sellerId)
+        Seller seller = sellerRepository.findByUserId(sellerId)
                 .orElseThrow(() -> new SellerNotFoundException(sellerId));
         return SellerResponses.SellerInfoResponse.from(seller);
     }

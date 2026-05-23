@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kafka
+  namespace: ecommerce
 spec:
   replicas: 1
   selector:
@@ -44,6 +45,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: kafka
+  namespace: ecommerce
 spec:
   selector:
     app: kafka
@@ -56,6 +58,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: kafka-create-topics
+  namespace: ecommerce
 spec:
   template:
     spec:
@@ -71,12 +74,12 @@ spec:
             - /bin/bash
             - -c
             - |
-              for TOPIC in order.events payments.events inventory.events catalog.events sellers.events; do
+              for TOPIC in orders.events payments.events inventory.events catalog.events sellers.events orders.events-dlt; do
                 /opt/kafka/bin/kafka-topics.sh \
                   --bootstrap-server kafka:9092 \
                   --create --if-not-exists \
                   --topic $TOPIC \
                   --partitions 1 \
                   --replication-factor 1
-                echo "✅ $TOPIC"
+                echo "$TOPIC"
               done

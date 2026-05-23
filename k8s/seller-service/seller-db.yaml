@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: seller-db
+  namespace: ecommerce
+spec:
+  selector:
+    app: seller-db-pod
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seller-db-deployment
+  namespace: ecommerce
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seller-db-pod
+  template:
+    metadata:
+      labels:
+        app: seller-db-pod
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          env:
+            - name: POSTGRES_DB
+              value: "sellers_db"
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              value: "postgreuser"
+          ports:
+            - containerPort: 5432

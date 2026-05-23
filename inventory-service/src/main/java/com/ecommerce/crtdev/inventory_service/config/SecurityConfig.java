@@ -30,9 +30,10 @@ public class SecurityConfig {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.GET, "/inventory/{productId}").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/inventory/reserve").hasAuthority("SCOPE_inventory:reserve")
-                        .requestMatchers(HttpMethod.PATCH, "/inventory/{productId}/stock").hasRole("SELLER")
+                        .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/inventory/{productId}").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/inventory/reserve").hasAuthority("SCOPE_inventory:reserve")
+                        .requestMatchers(HttpMethod.PATCH, "/api/inventory/{productId}/stock").hasRole("SELLER")
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))

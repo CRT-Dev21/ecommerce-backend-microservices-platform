@@ -1,0 +1,31 @@
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: prometheus-ds
+        access: proxy
+        url: http://prometheus-server.observability.svc.cluster.local:80
+        jsonData:
+          httpMethod: POST
+
+      - name: Tempo
+        type: tempo
+        uid: tempo-ds
+        access: proxy
+        url: http://tempo.observability.svc.cluster.local:3200
+        jsonData:
+          httpMethod: GET
+
+      - name: Loki
+        type: loki
+        uid: loki-ds
+        access: proxy
+        url: http://loki.observability.svc.cluster.local:3100
+        jsonData:
+          derivedFields:
+            - name: trace_id
+              matcherRegex: "(?:[^a-f0-9])([a-f0-9]{32})(?:[^a-f0-9])"
+              url: "$${__value.raw}"
+              datasourceUid: "tempo-ds"

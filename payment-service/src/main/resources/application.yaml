@@ -8,12 +8,11 @@ spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5436/payments_db}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgreuser}
 
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
 
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -22,7 +21,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8080/oauth2/jwks}
+          jwk-set-uri: ${AUTH_SERVICE_JWKS_URI:http://localhost:8081/oauth2/jwks}
       client:
         registration:
           seller-client:
@@ -32,8 +31,25 @@ spring:
             scope: seller:bankInfo
         provider:
           seller-client:
-            token-uri: ${AUTH_SERVICE_TOKEN_URI:http://localhost:8080/oauth2/token}
+            token-uri: ${AUTH_SERVICE_TOKEN_URI:http://localhost:8081/oauth2/token}
 
 services:
   seller:
-    url: ${SELLER_SERVICE_URL:http://localhost:8082}
+    url: ${SELLER_SERVICE_URL:http://localhost:8083}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-thresholds:
+        http.server.requests: 50,95,99

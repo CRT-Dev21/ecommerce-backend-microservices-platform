@@ -35,7 +35,7 @@ public class InventoryClient {
     public void reserve(List<InventoryDtos.StockItem> items) {
         try {
             inventoryWebClient.post()
-                    .uri("/inventory/reserve")
+                    .uri("/api/inventory/reserve")
                     .bodyValue(new InventoryDtos.ReserveStockRequest(items))
                     .retrieve()
                     .onStatus(

@@ -3,15 +3,13 @@ package com.ecommerce.crtdev.notification_service.consumer;
 import com.ecommerce.crtdev.notification_service.event.*;
 import com.ecommerce.crtdev.notification_service.service.EmailService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 @Component
+@Slf4j
 public class OrderEventConsumer {
-
-    private static final Logger log = LoggerFactory.getLogger(OrderEventConsumer.class);
 
     private static final String REASON_REFUNDED = "Refunded";
     private static final String REASON_PAYMENT_PREFIX = "Payment";

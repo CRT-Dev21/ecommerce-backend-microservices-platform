@@ -2,6 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: catalog-service-config
+  namespace: ecommerce
 data:
   SPRING_DATA_MONGODB_URI: "mongodb://products_user:products_pass@mongodb-service:27017/products_db?authSource=products_db"
   REDIS_HOST: "catalog-redis"

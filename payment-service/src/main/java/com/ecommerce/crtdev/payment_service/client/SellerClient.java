@@ -24,7 +24,7 @@ public class SellerClient {
     public BankInfoResponse getBankInfo(Long sellerId) {
         try {
             return sellerWebClient.get()
-                    .uri("/sellers/{sellerId}/bank-info", sellerId)
+                    .uri("/api/sellers/{sellerId}/bank-info", sellerId)
                     .retrieve()
                     .onStatus(
                             status -> status == HttpStatus.NOT_FOUND ||

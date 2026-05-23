@@ -50,8 +50,8 @@ public class OrderService {
         List<OrderResponses.FailedOrderResponse>  failed  = new ArrayList<>();
 
         for (Map.Entry<Long, List<OrderItem>> entry : itemsBySeller.entrySet()) {
-            Long            sellerId = entry.getKey();
-            List<OrderItem> items    = entry.getValue();
+            Long sellerId = entry.getKey();
+            List<OrderItem> items = entry.getValue();
 
             try {
                 OrderResponses.OrderSummaryResponse order = createSellerOrder(
