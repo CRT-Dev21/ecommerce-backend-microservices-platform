@@ -256,7 +256,7 @@ A single checkout request containing products from multiple sellers is automatic
 
 ---
 
-## The Order Saga
+## The transactional order
 
 ![Saga Diagram](docs/saga.png)
 
@@ -458,6 +458,6 @@ curl -X POST http://localhost:8089/ai/search \
 
 ## Author
 
-**Cesar Romero** — Software Engineer · Oracle Certified Professional Java SE 17
+By **Cesar Romero** — Software Engineer · Oracle Certified Professional Java SE 17
 
 [LinkedIn](https://linkedin.com/in/cesar-romero-java) · [GitHub](https://github.com/CRT-Dev21)
