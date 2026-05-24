@@ -169,9 +169,9 @@ kubectl get pods -n ecommerce
 
 ---
 
-## Observability - LGTM Stack on Kubernetes
+## Observability - Grafana Stack on Kubernetes
 
-The platform runs a full observability stack based on Loki, Grafana, Tempo, and Prometheus, deployed in a dedicated `observability` namespace via Helm. All telemetry is collected from the `ecommerce` namespace without any changes to service source code.
+The platform runs a full observability stack composed of Prometheus, Loki, Tempo, and Grafana, deployed in a dedicated `observability` namespace via Helm. All telemetry is collected from the `ecommerce` namespace without any changes to service source code.
 
 ```
 k8s/
@@ -188,11 +188,11 @@ Every microservice exposes JVM, server, and business metrics via Spring Boot Act
 Traces are collected using automatic instrumentation via the OpenTelemetry Java Agent, injected into each container through an `initContainer` that downloads the agent at pod startup. The agent intercepts all inbound and outbound requests and exports spans to Tempo over OTLP/gRPC on port 4317. Zero changes to any service's source code or dependencies.
 
 **Loki + Promtail**
-All microservices write to stdout, following the Kubernetes logging convention. Promtail runs as a DaemonSet on each cluster node, reads log files directly from `/var/log/pods`, enriches them with cluster metadata (namespace, pod name, container name), and ships them to Loki. No log configuration required inside the services.
+All microservices write to stdout, following the Kubernetes logging convention. Promtail runs as a DaemonSet on each cluster node, reads log files directly from `/var/log/pods`, enriches them with cluster metadata (namespace, pod name, container name), and ships them to Loki.
 
 ### Grafana
 
-Grafana connects all three data sources through a single `override-values.yaml` injected via Helm. The key integration is the correlation between Loki and Tempo via `matcherRegex`, when viewing a log entry in Loki that contains an OpenTelemetry `trace_id`, Grafana renders a direct button to jump to the full distributed trace in Tempo. Logs and traces become a single diagnostic surface.
+Grafana connects all three data sources through a single `override-values.yaml` injected via Helm. The key integration is the correlation between Loki and Tempo via `matcherRegex`, when viewing a log entry in Loki that contains an OpenTelemetry `trace_id`, Grafana renders a direct button to jump to the full distributed trace in Tempo.
 
 ---
 
