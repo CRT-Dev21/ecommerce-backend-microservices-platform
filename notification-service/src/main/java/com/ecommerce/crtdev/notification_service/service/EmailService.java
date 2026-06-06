@@ -32,15 +32,18 @@ public class EmailService {
         send(to, "Your order has been confirmed", templateService.orderConfirmed(orderId));
     }
 
+    @Async
     public void sendOrderCancelledByUser(String to, String orderId) {
         send(to, "Your order has been cancelled", templateService.orderCancelledByUser(orderId));
     }
 
+    @Async
     public void sendOrderCancelledPaymentFailed(String to, String orderId, String reason) {
         send(to, "Payment failed — order cancelled",
                 templateService.orderCancelledPaymentFailed(orderId, reason));
     }
 
+    @Async
     public void sendOrderRefunded(String to, String orderId) {
         send(to, "Your refund has been processed", templateService.orderRefunded(orderId));
     }

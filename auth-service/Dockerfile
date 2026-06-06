@@ -15,4 +15,7 @@ USER springuser
 
 COPY --from=builder /build/target/*.jar app.jar
 
+COPY auth-service/rsa/private.pem certs/
+COPY auth-service/rsa/public.pem certs/
+
 ENTRYPOINT ["java", "-jar", "app.jar"]

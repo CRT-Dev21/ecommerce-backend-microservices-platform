@@ -16,7 +16,7 @@ spring:
       embedding:
         model: nomic-embed-text
       chat:
-        model: llama3.2
+        model: qwen2.5:1.5b
         options:
           temperature: 0.3
     vectorstore:

@@ -142,7 +142,7 @@ services:
     image: redis:7
     container_name: cart
     ports:
-      - "6380:6379"
+      - "6381:6379"
 
   cart-service:
     build:
@@ -268,6 +268,7 @@ services:
       SELLER_SERVICE_URL: http://seller-service:8082
 
   notification-service:
+    image: crtdev21/notification-service:v1
     build:
       context: .
       dockerfile: notification-service/Dockerfile

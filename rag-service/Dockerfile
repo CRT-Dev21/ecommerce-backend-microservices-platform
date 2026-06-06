@@ -1,15 +1,27 @@
-FROM maven:3.9.6-eclipse-temurin-21 AS builder
+FROM maven:3.9.9-eclipse-temurin-21 AS deps
 WORKDIR /build
+COPY rag-service/pom.xml .
+RUN mvn dependency:go-offline -B --no-transfer-progress
 
-COPY rag-service ./rag-service
-RUN mvn -f ./rag-service/pom.xml clean package -DskipTests
+FROM deps AS builder
+COPY rag-service/src ./src
+RUN mvn clean package -DskipTests -B --no-transfer-progress
 
-FROM eclipse-temurin:21-jre-jammy
+WORKDIR /extracted
+RUN java -Djarmode=layertools -jar /build/target/*.jar extract --destination /extracted
+
+FROM gcr.io/distroless/java21-debian12:nonroot
 WORKDIR /app
 
-RUN useradd -ms /bin/bash springuser
-USER springuser
+COPY --from=builder /extracted/dependencies/ ./
+COPY --from=builder /extracted/spring-boot-loader/ ./
+COPY --from=builder /extracted/snapshot-dependencies/ ./
+COPY --from=builder /extracted/application/ ./
 
-COPY --from=builder /build/rag-service/target/rag-service-0.0.1-SNAPSHOT.jar app.jar
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT [ \
+  "java", \
+  "-XX:+UseContainerSupport", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-XX:+ExitOnOutOfMemoryError", \
+  "org.springframework.boot.loader.launch.JarLauncher" \
+]

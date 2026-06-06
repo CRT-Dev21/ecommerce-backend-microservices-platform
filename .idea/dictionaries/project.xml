@@ -3,6 +3,7 @@
     <words>
       <w>crtdev</w>
       <w>curlimages</w>
+      <w>deps</w>
       <w>healthcheck</w>
       <w>jwks</w>
       <w>opentelemetry</w>
@@ -10,6 +11,7 @@
       <w>postgreuser</w>
       <w>qdrant</w>
       <w>resourceserver</w>
+      <w>tracecontext</w>
     </words>
   </dictionary>
 </component>

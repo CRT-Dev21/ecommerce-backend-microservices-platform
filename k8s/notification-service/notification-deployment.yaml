@@ -32,8 +32,8 @@ spec:
 
       containers:
         - name: notification-service
-          image: ecommerce-backend-microservices-platform-notification-service:latest
-          imagePullPolicy: Never
+          image: docker.io/crtdev21/notification-service:v1
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8088
           env:
